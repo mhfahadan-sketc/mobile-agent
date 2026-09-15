@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.AlarmClock
+import android.provider.Settings
 import android.telephony.SmsManager
 import androidx.core.content.ContextCompat
 import com.example.mobileagent.agent.Command
@@ -32,7 +33,8 @@ class ActionExecutor(private val context: Context) {
 
     private fun call(contact: String): String {
         val num = contacts.resolve(contact) ?: return "«$contact» توی مخاطبین نبود."
-        if (!has(Manifest.permission.CALL_PHONE)) return "اجازه‌ی تماس نیست."
+        if (!has(Manifest.permission.CALL_PHONE))
+            return "اجازه‌ی تماس نداری. از تنظیمات → برنامه‌ها → دستیار موبایل → مجوزها بده."
         return try {
             context.startActivity(
                 Intent(Intent.ACTION_CALL, Uri.parse("tel:${Uri.encode(num)}"))
@@ -44,7 +46,8 @@ class ActionExecutor(private val context: Context) {
 
     private fun sms(contact: String, body: String): String {
         val num = contacts.resolve(contact) ?: return "«$contact» پیدا نشد."
-        if (!has(Manifest.permission.SEND_SMS)) return "اجازه‌ی پیامک نیست."
+        if (!has(Manifest.permission.SEND_SMS))
+            return "اجازه‌ی پیامک نداری."
         return try {
             val sm = if (Build.VERSION.SDK_INT >= 31)
                 context.getSystemService(SmsManager::class.java)!!
@@ -114,13 +117,26 @@ class ActionExecutor(private val context: Context) {
         return "اپی با نام «$name» نبود."
     }
 
-    private fun webSearch(q: String): String = try {
-        context.startActivity(
-            Intent(Intent.ACTION_WEB_SEARCH).putExtra("query", q)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        )
-        "🔎 دارم «$q» رو جستجو می‌کنم."
-    } catch (_: Exception) { "مرورگر نبود." }
+    private fun webSearch(q: String): String {
+        // اول تلاش کن با اپ پیش‌فرض مرورگر
+        return try {
+            context.startActivity(
+                Intent(Intent.ACTION_WEB_SEARCH).putExtra("query", q)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+            "🔎 دارم «$q» رو جستجو می‌کنم."
+        } catch (_: Exception) {
+            // فالبک: باز کردن گوگل با URL
+            try {
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW,
+                        Uri.parse("https://www.google.com/search?q=${Uri.encode(q)}"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+                "🔎 دارم «$q» رو جستجو می‌کنم."
+            } catch (_: Exception) { "مرورگر نبود." }
+        }
+    }
 
     private fun openUrl(url: String): String {
         val full = if (url.startsWith("http")) url else "https://$url"
@@ -133,15 +149,54 @@ class ActionExecutor(private val context: Context) {
         } catch (_: Exception) { "باز نشد." }
     }
 
-    private fun setAlarm(h: Int, m: Int): String = try {
-        context.startActivity(
-            Intent(AlarmClock.ACTION_SET_ALARM)
-                .putExtra(AlarmClock.EXTRA_HOUR, h)
-                .putExtra(AlarmClock.EXTRA_MINUTES, m)
+    /**
+     * آلارم — با چند فالبک برای سازگاری با گوشی‌های مختلف
+     */
+    private fun setAlarm(h: Int, m: Int): String {
+        val timeStr = "${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}"
+
+        // روش ۱: Intent استاندارد SetAlarm
+        try {
+            val intent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
+                putExtra(AlarmClock.EXTRA_HOUR, h)
+                putExtra(AlarmClock.EXTRA_MINUTES, m)
+                putExtra(AlarmClock.EXTRA_SKIP_UI, false)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            return "⏰ آلارم $timeStr تنظیم شد."
+        } catch (_: Exception) { }
+
+        // روش ۲: باز کردن مستقیم اپ ساعت
+        try {
+            val intent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
+                putExtra(AlarmClock.EXTRA_HOUR, h)
+                putExtra(AlarmClock.EXTRA_MINUTES, m)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            return "⏰ آلارم $timeStr تنظیم شد."
+        } catch (_: Exception) { }
+
+        // روش ۳: باز کردن خود اپ ساعت با دستی تنظیم کن
+        try {
+            val intent = Intent(AlarmClock.ACTION_SHOW_ALARMS)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        )
-        "⏰ آلارم $h:${m.toString().padStart(2,'0')}"
-    } catch (_: Exception) { "اپ ساعت نبود." }
+            context.startActivity(intent)
+            return "⏰ اپ ساعت باز شد. ساعت $timeStr رو دستی تنظیم کن."
+        } catch (_: Exception) { }
+
+        // روش ۴: صفحه‌ی تاریخ/زمان تنظیمات
+        return try {
+            context.startActivity(
+                Intent(Settings.ACTION_DATE_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+            "⏰ اپ ساعت روی گوشیت پیدا نشد. برای آلارم ساعت $timeStr از اپ ساعت خودت استفاده کن."
+        } catch (_: Exception) {
+            "نتونستم آلارم بذارم. احتمالاً اپ ساعت روی گوشیت پیدا نشد."
+        }
+    }
 
     private fun has(p: String) =
         ContextCompat.checkSelfPermission(context, p) == PackageManager.PERMISSION_GRANTED
@@ -149,12 +204,15 @@ class ActionExecutor(private val context: Context) {
     companion object {
         val HELP = """
             می‌تونم این کارها رو بکنم:
+
             📞 زنگ بزن به علی
             ✉️ به مامان پیام بده که دیر می‌رسم
             📨 واتساپ به بابا بگو رسیدم
             🚀 اینستاگرام رو باز کن
-            ⏰ ساعت ۷ آلارم بذار
+            ⏰ ساعت ۱۰ آلارم بذار
+            ⏰ ۷ صبح یادآوری بذار
             🔎 گوگل کن هوای تهران
+            🔎 هوای مشهد
         """.trimIndent()
     }
 }
