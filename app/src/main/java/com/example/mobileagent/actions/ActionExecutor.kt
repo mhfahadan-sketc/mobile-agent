@@ -13,12 +13,28 @@ import androidx.core.content.ContextCompat
 import com.example.mobileagent.agent.Command
 import com.example.mobileagent.agent.ContactResolver
 import com.example.mobileagent.agent.Parser
+import com.example.mobileagent.security.MalwareScanner
+import com.example.mobileagent.security.Threat
+import com.example.mobileagent.storage.DuplicateFinder
+import com.example.mobileagent.storage.DuplicateGroup
+import com.example.mobileagent.storage.JunkCleaner
+import com.example.mobileagent.storage.JunkFile
 
 class ActionExecutor(private val context: Context) {
 
     private val contacts = ContactResolver(context)
+    private val malware = MalwareScanner(context)
+    private val dupFinder = DuplicateFinder(context)
+    private val junk = JunkCleaner(context)
 
-    fun execute(cmd: Command): String = when (cmd) {
+    var lastThreats: List<Threat> = emptyList()
+        private set
+    var lastDuplicates: List<DuplicateGroup> = emptyList()
+        private set
+    var lastJunk: List<JunkFile> = emptyList()
+        private set
+
+    suspend fun execute(cmd: Command): String = when (cmd) {
         is Command.Call -> call(cmd.contact)
         is Command.Sms -> sms(cmd.contact, cmd.body)
         is Command.WhatsApp -> whatsapp(cmd.contact, cmd.body)
@@ -26,22 +42,35 @@ class ActionExecutor(private val context: Context) {
         is Command.WebSearch -> webSearch(cmd.query)
         is Command.OpenUrl -> openUrl(cmd.url)
         is Command.SetAlarm -> setAlarm(cmd.hour, cmd.minute)
+
+        Command.ScanMalware -> scanMalware()
+        Command.FindDuplicates -> findDuplicates()
+        Command.DeleteDuplicates -> deleteDuplicates()
+        Command.FindJunk -> findJunk()
+        Command.DeleteJunk -> deleteJunk()
+        Command.CleanCache -> cleanCache()
+        Command.AnalyzeStorage -> analyzeStorage()
+
         Command.Help -> HELP
         Command.Cancel -> "لغو شد."
         is Command.Unknown -> "متوجه نشدم 🤔\n«راهنما» رو بزن."
     }
 
+    // ═════════════════ تماس / پیام
+
     private fun call(contact: String): String {
         val num = contacts.resolve(contact) ?: return "«$contact» توی مخاطبین نبود."
         if (!has(Manifest.permission.CALL_PHONE))
-            return "اجازه‌ی تماس نداری. از تنظیمات → برنامه‌ها → دستیار موبایل → مجوزها بده."
+            return "اجازه‌ی تماس نداری. از تنظیمات بده."
         return try {
             context.startActivity(
                 Intent(Intent.ACTION_CALL, Uri.parse("tel:${Uri.encode(num)}"))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
             "📞 تماس با «$contact»"
-        } catch (e: Exception) { "تماس نشد: ${e.message}" }
+        } catch (e: Exception) {
+            "تماس نشد: ${e.message}"
+        }
     }
 
     private fun sms(contact: String, body: String): String {
@@ -51,12 +80,15 @@ class ActionExecutor(private val context: Context) {
         return try {
             val sm = if (Build.VERSION.SDK_INT >= 31)
                 context.getSystemService(SmsManager::class.java)!!
-            else @Suppress("DEPRECATION") SmsManager.getDefault()
+            else
+                @Suppress("DEPRECATION") SmsManager.getDefault()
             val parts = sm.divideMessage(body)
             if (parts.size == 1) sm.sendTextMessage(num, null, body, null, null)
             else sm.sendMultipartTextMessage(num, null, parts, null, null)
             "✉️ پیامک به «$contact» فرستاده شد."
-        } catch (e: Exception) { "پیامک نشد: ${e.message}" }
+        } catch (e: Exception) {
+            "پیامک نشد: ${e.message}"
+        }
     }
 
     private fun whatsapp(contact: String, body: String?): String {
@@ -73,8 +105,12 @@ class ActionExecutor(private val context: Context) {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
             "📨 واتساپ برای «$contact» باز شد."
-        } catch (e: Exception) { "واتساپ نصب نیست." }
+        } catch (e: Exception) {
+            "واتساپ نصب نیست."
+        }
     }
+
+    // ═════════════════ باز کردن اپ
 
     private val appAliases = mapOf(
         "اینستاگرام" to "com.instagram.android",
@@ -93,6 +129,7 @@ class ActionExecutor(private val context: Context) {
         val direct = appAliases[q] ?: appAliases.entries.firstOrNull {
             q.contains(it.key) || it.key.contains(q)
         }?.value
+
         if (direct != null) {
             pm.getLaunchIntentForPackage(direct)?.let {
                 it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -103,7 +140,9 @@ class ActionExecutor(private val context: Context) {
 
         val apps = if (Build.VERSION.SDK_INT >= 33)
             pm.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(0))
-        else @Suppress("DEPRECATION") pm.getInstalledApplications(0)
+        else
+            @Suppress("DEPRECATION") pm.getInstalledApplications(0)
+
         for (a in apps) {
             val lbl = Parser.normalize(pm.getApplicationLabel(a).toString())
             if (lbl.contains(q, true) || q.contains(lbl, true)) {
@@ -117,8 +156,9 @@ class ActionExecutor(private val context: Context) {
         return "اپی با نام «$name» نبود."
     }
 
+    // ═════════════════ جستجو
+
     private fun webSearch(q: String): String {
-        // اول تلاش کن با اپ پیش‌فرض مرورگر
         return try {
             context.startActivity(
                 Intent(Intent.ACTION_WEB_SEARCH).putExtra("query", q)
@@ -126,15 +166,17 @@ class ActionExecutor(private val context: Context) {
             )
             "🔎 دارم «$q» رو جستجو می‌کنم."
         } catch (_: Exception) {
-            // فالبک: باز کردن گوگل با URL
             try {
                 context.startActivity(
-                    Intent(Intent.ACTION_VIEW,
-                        Uri.parse("https://www.google.com/search?q=${Uri.encode(q)}"))
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    Intent(
+                        Intent.ACTION_VIEW,
+                        Uri.parse("https://www.google.com/search?q=${Uri.encode(q)}")
+                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 )
                 "🔎 دارم «$q» رو جستجو می‌کنم."
-            } catch (_: Exception) { "مرورگر نبود." }
+            } catch (_: Exception) {
+                "مرورگر نبود."
+            }
         }
     }
 
@@ -146,16 +188,16 @@ class ActionExecutor(private val context: Context) {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
             "باز شد: $full"
-        } catch (_: Exception) { "باز نشد." }
+        } catch (_: Exception) {
+            "باز نشد."
+        }
     }
 
-    /**
-     * آلارم — با چند فالبک برای سازگاری با گوشی‌های مختلف
-     */
+    // ═════════════════ آلارم
+
     private fun setAlarm(h: Int, m: Int): String {
         val timeStr = "${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}"
 
-        // روش ۱: Intent استاندارد SetAlarm
         try {
             val intent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
                 putExtra(AlarmClock.EXTRA_HOUR, h)
@@ -167,7 +209,6 @@ class ActionExecutor(private val context: Context) {
             return "⏰ آلارم $timeStr تنظیم شد."
         } catch (_: Exception) { }
 
-        // روش ۲: باز کردن مستقیم اپ ساعت
         try {
             val intent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
                 putExtra(AlarmClock.EXTRA_HOUR, h)
@@ -178,28 +219,115 @@ class ActionExecutor(private val context: Context) {
             return "⏰ آلارم $timeStr تنظیم شد."
         } catch (_: Exception) { }
 
-        // روش ۳: باز کردن خود اپ ساعت با دستی تنظیم کن
         try {
-            val intent = Intent(AlarmClock.ACTION_SHOW_ALARMS)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
+            context.startActivity(
+                Intent(AlarmClock.ACTION_SHOW_ALARMS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
             return "⏰ اپ ساعت باز شد. ساعت $timeStr رو دستی تنظیم کن."
         } catch (_: Exception) { }
 
-        // روش ۴: صفحه‌ی تاریخ/زمان تنظیمات
         return try {
             context.startActivity(
                 Intent(Settings.ACTION_DATE_SETTINGS)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
-            "⏰ اپ ساعت روی گوشیت پیدا نشد. برای آلارم ساعت $timeStr از اپ ساعت خودت استفاده کن."
+            "⏰ اپ ساعت پیدا نشد. ساعت $timeStr رو دستی تنظیم کن."
         } catch (_: Exception) {
-            "نتونستم آلارم بذارم. احتمالاً اپ ساعت روی گوشیت پیدا نشد."
+            "نتونستم آلارم بذارم."
         }
     }
 
+    // ═════════════════ امنیت
+
+    private suspend fun scanMalware(): String {
+        lastThreats = malware.scan()
+        if (lastThreats.isEmpty()) return "✅ اسکن تموم شد. تهدیدی نبود."
+        return buildString {
+            append("⚠️ ${lastThreats.size} مورد پیدا شد:\n\n")
+            lastThreats.take(5).forEach {
+                append("• ${it.label} — ${it.severity.label}\n")
+            }
+            if (lastThreats.size > 5) append("… و ${lastThreats.size - 5} مورد دیگه.\n")
+            append("\nصفحه‌ی جزئیات باز شد.")
+        }
+    }
+
+    // ═════════════════ پاکسازی
+
+    private suspend fun findDuplicates(): String {
+        lastDuplicates = dupFinder.find()
+        if (lastDuplicates.isEmpty()) return "🔍 فایل تکراری نبود."
+        val total = lastDuplicates.sumOf { it.wasted }
+        return buildString {
+            append("🔍 ${lastDuplicates.size} گروه تکراری\n")
+            append("💾 قابل آزادسازی: ${fmtB(total)}\n\n")
+            lastDuplicates.take(5).forEach {
+                append("• «${it.files.first().name}» × ${it.files.size}\n")
+            }
+            append("\nبرای حذف بگو: «تکراری‌ها رو پاک کن»")
+        }
+    }
+
+    private suspend fun deleteDuplicates(): String {
+        if (lastDuplicates.isEmpty()) return "اول بگو «فایل‌های تکراری رو پیدا کن»."
+        val (n, freed) = dupFinder.delete(lastDuplicates)
+        lastDuplicates = emptyList()
+        return "✅ $n فایل حذف شد.\n💾 ${fmtB(freed)} آزاد شد."
+    }
+
+    private suspend fun findJunk(): String {
+        lastJunk = junk.findJunk()
+        if (lastJunk.isEmpty()) return "🧹 فایل اضافی نبود."
+        val total = lastJunk.sumOf { it.size }
+        return buildString {
+            append("🧹 ${lastJunk.size} فایل اضافی (${fmtB(total)})\n\n")
+            lastJunk.take(5).forEach {
+                append("• ${it.file.name} — ${it.reason}\n")
+            }
+            append("\nبرای حذف بگو: «اضافی‌ها رو پاک کن»")
+        }
+    }
+
+    private suspend fun deleteJunk(): String {
+        if (lastJunk.isEmpty()) return "اول بگو «فایل‌های اضافی رو پیدا کن»."
+        val (n, freed) = junk.deleteJunk(lastJunk)
+        lastJunk = emptyList()
+        return "✅ $n فایل پاک شد.\n💾 ${fmtB(freed)} آزاد شد."
+    }
+
+    private suspend fun cleanCache(): String {
+        val freed = junk.clearOwnCache()
+        return "✅ کش خودم پاک شد (${fmtB(freed)}).\n\n" +
+                "⚠️ برای کش بقیه اپ‌ها root لازمه."
+    }
+
+    private suspend fun analyzeStorage(): String {
+        val r = junk.analyze()
+        return buildString {
+            append("💾 کل: ${fmtB(r.total)}\n")
+            append("• آزاد: ${fmtB(r.free)}\n")
+            append("• استفاده: ${fmtB(r.used)}\n\n")
+            r.byCategory.filter { it.value > 0 }
+                .toList().sortedByDescending { it.second }
+                .forEach { (k, v) ->
+                    val pct = if (r.used > 0) (v * 100.0 / r.used).toInt() else 0
+                    append("• $k: ${fmtB(v)} ($pct%)\n")
+                }
+        }
+    }
+
+    // ═════════════════ ابزار
+
     private fun has(p: String) =
         ContextCompat.checkSelfPermission(context, p) == PackageManager.PERMISSION_GRANTED
+
+    private fun fmtB(b: Long): String = when {
+        b < 1024 -> "$b B"
+        b < 1024 * 1024 -> "%.1f KB".format(b / 1024.0)
+        b < 1024L * 1024 * 1024 -> "%.1f MB".format(b / 1024.0 / 1024)
+        else -> "%.2f GB".format(b / 1024.0 / 1024 / 1024)
+    }
 
     companion object {
         val HELP = """
@@ -210,9 +338,13 @@ class ActionExecutor(private val context: Context) {
             📨 واتساپ به بابا بگو رسیدم
             🚀 اینستاگرام رو باز کن
             ⏰ ساعت ۱۰ آلارم بذار
-            ⏰ ۷ صبح یادآوری بذار
             🔎 گوگل کن هوای تهران
-            🔎 هوای مشهد
+
+            🛡️ ویروس‌ها رو پیدا کن
+            📑 فایل‌های تکراری رو پیدا کن
+            🧹 فایل‌های اضافی رو پیدا کن
+            💾 کش رو پاک کن
+            📊 چقدر فضا اشغال شده
         """.trimIndent()
     }
 }
