@@ -7,27 +7,33 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -43,15 +49,29 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import java.util.Locale
+import com.example.mobileagent.core.ProgressChannel
+import com.example.mobileagent.core.ScanProgress
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(vm: ChatViewModel = viewModel()) {
     val msgs by vm.msgs.collectAsStateWithLifecycle()
+    val busy by vm.busy.collectAsStateWithLifecycle()
+    val showThreats by vm.showThreats.collectAsStateWithLifecycle()
+    val threats by vm.threats.collectAsStateWithLifecycle()
+
+    if (showThreats) {
+        ThreatDetailScreen(
+            threats = threats,
+            onBack = { vm.closeThreats() }
+        )
+        return
+    }
+
     val listState = rememberLazyListState()
     val context = LocalContext.current
     var input by remember { mutableStateOf("") }
@@ -62,7 +82,6 @@ fun ChatScreen(vm: ChatViewModel = viewModel()) {
         }
     }
 
-    // لانچر برای تشخیص صدا
     val voiceLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -84,21 +103,12 @@ fun ChatScreen(vm: ChatViewModel = viewModel()) {
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
             )
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "fa-IR")
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "fa-IR")
             putExtra(RecognizerIntent.EXTRA_PROMPT, "بگو چی کارت دارم…")
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         }
         try {
             voiceLauncher.launch(intent)
-        } catch (_: Exception) {
-            // اگه اپ تشخیص صدا نبود، کاربر رو به نصب هدایت کن
-            try {
-                context.startActivity(
-                    Intent(Intent.ACTION_VIEW,
-                        android.net.Uri.parse("market://search?q=google+speech"))
-                )
-            } catch (_: Exception) { }
-        }
+        } catch (_: Exception) { }
     }
 
     Scaffold(
@@ -112,6 +122,7 @@ fun ChatScreen(vm: ChatViewModel = viewModel()) {
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
         ) {
+            // لیست پیام‌ها
             LazyColumn(
                 state = listState,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -140,6 +151,16 @@ fun ChatScreen(vm: ChatViewModel = viewModel()) {
                 }
             }
 
+            // نوار پیشرفت
+            ScanProgressBar()
+
+            // نوار دکمه‌های سریع
+            QuickActionsRow(
+                enabled = !busy,
+                onCommand = { vm.send(it) }
+            )
+
+            // نوار ورودی
             Row(
                 Modifier.fillMaxWidth().padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -154,7 +175,6 @@ fun ChatScreen(vm: ChatViewModel = viewModel()) {
                 )
                 Spacer(Modifier.width(6.dp))
 
-                // دکمه‌ی میکروفون
                 IconButton(
                     onClick = { startVoice() },
                     modifier = Modifier.size(48.dp)
@@ -166,7 +186,6 @@ fun ChatScreen(vm: ChatViewModel = viewModel()) {
                     )
                 }
 
-                // دکمه‌ی ارسال
                 FilledIconButton(
                     onClick = {
                         val t = input.trim()
@@ -174,11 +193,88 @@ fun ChatScreen(vm: ChatViewModel = viewModel()) {
                             vm.send(t)
                             input = ""
                         }
-                    }
+                    },
+                    enabled = !busy
                 ) {
                     Icon(Icons.Default.Send, contentDescription = "ارسال")
                 }
             }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════
+//  دکمه‌های سریع
+// ═══════════════════════════════════════════════════
+
+@Composable
+fun QuickActionsRow(
+    enabled: Boolean,
+    onCommand: (String) -> Unit
+) {
+    val actions = listOf(
+        "🛡️" to "ویروس‌ها رو پیدا کن",
+        "🧹" to "فایل‌های اضافی رو پیدا کن",
+        "📑" to "فایل‌های تکراری رو پیدا کن",
+        "💾" to "کش رو پاک کن",
+        "📊" to "چقدر فضا اشغال شده",
+        "⏰" to "ساعت ۷ آلارم بذار",
+        "🚀" to "اینستاگرام رو باز کن",
+        "📞" to "زنگ بزن به علی"
+    )
+
+    LazyRow(
+        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        contentPadding = PaddingValues(horizontal = 4.dp)
+    ) {
+        items(actions) { (icon, cmd) ->
+            AssistChip(
+                onClick = { if (enabled) onCommand(cmd) },
+                label = {
+                    Text(
+                        "$icon ${cmd.take(18)}",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                },
+                colors = AssistChipDefaults.assistChipColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                ),
+                enabled = enabled
+            )
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════
+//  نوار پیشرفت اسکن
+// ═══════════════════════════════════════════════════
+
+@Composable
+fun ScanProgressBar() {
+    val progress by ProgressChannel.progress.collectAsStateWithLifecycle(
+        initialValue = null
+    )
+    val p = progress
+    if (p is ScanProgress.Scanning) {
+        val frac = if (p.total > 0) p.current.toFloat() / p.total else 0f
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp)
+        ) {
+            LinearProgressIndicator(
+                progress = { frac },
+                modifier = Modifier.fillMaxWidth().height(6.dp)
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "${p.label}  (${p.current}/${p.total})",
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
