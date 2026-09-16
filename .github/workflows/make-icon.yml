@@ -1,0 +1,47 @@
+name: Make App Icon
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'app/icon-source.png'
+
+jobs:
+  make-icon:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ImageMagick
+        run: sudo apt-get update && sudo apt-get install -y imagemagick
+
+      - name: Generate Android icon sizes
+        run: |
+          cd app
+          mkdir -p src/main/res/mipmap-mdpi
+          mkdir -p src/main/res/mipmap-hdpi
+          mkdir -p src/main/res/mipmap-xhdpi
+          mkdir -p src/main/res/mipmap-xxhdpi
+          mkdir -p src/main/res/mipmap-xxxhdpi
+
+          convert icon-source.png -resize 48x48     src/main/res/mipmap-mdpi/ic_launcher.png
+          convert icon-source.png -resize 72x72     src/main/res/mipmap-hdpi/ic_launcher.png
+          convert icon-source.png -resize 96x96     src/main/res/mipmap-xhdpi/ic_launcher.png
+          convert icon-source.png -resize 144x144   src/main/res/mipmap-xxhdpi/ic_launcher.png
+          convert icon-source.png -resize 192x192   src/main/res/mipmap-xxxhdpi/ic_launcher.png
+
+          convert icon-source.png -resize 48x48     src/main/res/mipmap-mdpi/ic_launcher_round.png
+          convert icon-source.png -resize 72x72     src/main/res/mipmap-hdpi/ic_launcher_round.png
+          convert icon-source.png -resize 96x96     src/main/res/mipmap-xhdpi/ic_launcher_round.png
+          convert icon-source.png -resize 144x144   src/main/res/mipmap-xxhdpi/ic_launcher_round.png
+          convert icon-source.png -resize 192x192   src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
+
+      - name: Commit icons
+        run: |
+          git config user.name "icon-bot"
+          git config user.email "icon-bot@users.noreply.github.com"
+          git add app/src/main/res/mipmap-*
+          git commit -m "Auto-generate app icons" || echo "no changes"
+          git push
