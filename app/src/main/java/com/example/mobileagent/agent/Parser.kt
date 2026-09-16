@@ -30,10 +30,47 @@ object Parser {
                 RegexOption.IGNORE_CASE).containsMatchIn(s)) return Command.Help
         if (Regex("^(کنسل|انصراف|بی ?خیال|لغو|نه)$").containsMatchIn(s)) return Command.Cancel
 
-        // ═══════ آلارم (چند الگو)
+        // ═══════ امنیت
+        if (Regex("(ویروس|بدافزار|مالور|malware|اسکن امنیتی|جاسوس|spy|امنیت)",
+                RegexOption.IGNORE_CASE).containsMatchIn(s)) {
+            return Command.ScanMalware
+        }
+
+        // ═══════ فایل تکراری
+        if (Regex("(تکراری|دوبار|dup).*(پاک|حذف)").containsMatchIn(s) ||
+            Regex("(پاک|حذف).*(تکراری|دوبار)").containsMatchIn(s)) {
+            return Command.DeleteDuplicates
+        }
+        if (Regex("(تکراری|دوبار|dup).*(فایل|عکس|فیلم|پیدا|بگرد|نشون|ببین)")
+                .containsMatchIn(s) ||
+            Regex("(فایل|عکس|فیلم).*(تکراری|دوبار)").containsMatchIn(s)) {
+            return Command.FindDuplicates
+        }
+
+        // ═══════ آشغال
+        if (Regex("(اضافی|آشغال|junk|بیخود|بیخودی|هدر).*(پاک|حذف|پیدا|بگرد|نشون)")
+                .containsMatchIn(s) ||
+            Regex("(پاک|حذف).*(اضافی|آشغال|junk)").containsMatchIn(s)) {
+            return if (Regex("(پاک|حذف)").containsMatchIn(s)) Command.DeleteJunk
+            else Command.FindJunk
+        }
+
+        // ═══════ کش
+        if (Regex("(کش|cache).*(پاک|حذف|خالی|تمیز|بریز)").containsMatchIn(s) ||
+            Regex("(پاک|حذف|خالی|تمیز).*(کش|cache)").containsMatchIn(s)) {
+            return Command.CleanCache
+        }
+
+        // ═══════ تحلیل حافظه
+        if (Regex("(چقدر فضا|چی فضا|فضای خالی|حافظه|چقدر حجم|چی پره|گوشیم چطوره|آنالیز|تحلیل فضا)")
+                .containsMatchIn(s)) {
+            return Command.AnalyzeStorage
+        }
+
+        // ═══════ آلارم
         parseAlarm(s)?.let { return it }
 
-        // ═══════ جستجو (چند الگو)
+        // ═══════ جستجو
         parseSearch(s)?.let { return it }
 
         // ═══════ تماس
@@ -60,7 +97,7 @@ object Parser {
             return Command.WhatsApp(s, null)
         }
 
-        // ═══════ پیامک (چند الگو)
+        // ═══════ پیامک
         Regex("^به\\s+(.+?)\\s+(?:پیام|پیامک|اس ?ام ?اس)\\s+(?:بده|بزن)(?:\\s+که)?\\s*(.*)$")
             .find(s)?.let {
                 return Command.Sms(
@@ -94,15 +131,10 @@ object Parser {
         return Command.Unknown(s)
     }
 
-    // ══════════════════════════════════════════
-    //  آلارم — چند الگو
-    // ══════════════════════════════════════════
     private fun parseAlarm(s: String): Command? {
-        // کلمه‌های آلارم
         if (!Regex("(آلارم|زنگ|یادآوری|هشدار|reminder|alarm)",
                 RegexOption.IGNORE_CASE).containsMatchIn(s)) return null
 
-        // الگوی «ساعت X» یا «ساعت X:Y»
         Regex("ساعت\\s*(\\d{1,2})(?::(\\d{1,2}))?").find(s)?.let {
             val h = it.groupValues[1].toIntOrNull() ?: return null
             val m = it.groupValues[2].toIntOrNull() ?: 0
@@ -111,7 +143,6 @@ object Parser {
             }
         }
 
-        // الگوی «X:Y» بدون کلمه‌ی ساعت (مثل «7:30 آلارم بذار»)
         Regex("(\\d{1,2}):(\\d{1,2})").find(s)?.let {
             val h = it.groupValues[1].toIntOrNull() ?: return null
             val m = it.groupValues[2].toIntOrNull() ?: return null
@@ -120,35 +151,31 @@ object Parser {
             }
         }
 
-        // الگوی «X صبح» / «X عصر» / «X شب» / «X ظهر»
         Regex("(\\d{1,2})\\s*(صبح|عصر|شب|ظهر|بعد از ظهر|بعدازظهر)").find(s)?.let {
             var h = it.groupValues[1].toIntOrNull() ?: return null
             val when_ = it.groupValues[2]
             if (h in 1..12) {
                 h = when {
                     when_ == "صبح" -> if (h == 12) 0 else h
-                    when_.contains("ظهر") && !when_.contains("بعد") -> if (h < 12) h + 12 else h
-                    when_ == "عصر" || when_.contains("بعد") -> if (h < 12) h + 12 else h
+                    when_.contains("ظهر") && !when_.contains("بعد") ->
+                        if (h < 12) h + 12 else h
+                    when_ == "عصر" || when_.contains("بعد") ->
+                        if (h < 12) h + 12 else h
                     when_ == "شب" -> if (h < 12) h + 12 else h
                     else -> h
                 }
                 return Command.SetAlarm(h.coerceIn(0, 23), 0)
             }
         }
-
-        // الگوی «X دقیقه دیگه» / «X ساعت دیگه» — موعد نسبی، نادیده می‌گیریم
         return null
     }
 
-    // ══════════════════════════════════════════
-    //  جستجو — چند الگو
-    // ══════════════════════════════════════════
     private fun parseSearch(s: String): Command? {
         val patterns = listOf(
             Regex("^(?:جستجو کن|سرچ کن|گوگل کن|بگرد دنبال)\\s+(.+)$"),
             Regex("^(?:جستجو|سرچ|گوگل)\\s+(.+)$"),
             Regex("^(.+?)\\s+(?:رو\\s+)?(?:جستجو کن|سرچ کن|گوگل کن|بگرد)$"),
-            Regex("^(.+?)\\s+رو\\s+جستجو کن$"),
+            Regex("^(.+?)\\s+رو\\s+جستجو کن$")
         )
         for (p in patterns) {
             p.find(s)?.let {
@@ -156,7 +183,6 @@ object Parser {
                 if (q.length >= 2) return Command.WebSearch(q)
             }
         }
-        // «هوای X» یا «آب و هوای X» بدون کلمه‌ی جستجو
         Regex("^(?:هوای|آب و هوای)\\s+(.+)$").find(s)?.let {
             return Command.WebSearch("هوای ${it.groupValues[1].trim()}")
         }
