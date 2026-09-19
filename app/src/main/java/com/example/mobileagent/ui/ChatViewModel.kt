@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.mobileagent.actions.ActionExecutor
 import com.example.mobileagent.agent.Command
+import com.example.mobileagent.agent.LlmAgent
 import com.example.mobileagent.agent.Parser
 import com.example.mobileagent.security.Threat
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,12 +18,14 @@ data class Msg(val text: String, val me: Boolean)
 class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     val executor = ActionExecutor(app)
+    private val llm = LlmAgent()
 
     private val _msgs = MutableStateFlow(
         listOf(
             Msg(
                 "سلام 👋 من دستیار موبایلم.\n" +
-                "«راهنما» رو بزن یا از دکمه‌های پایین استفاده کن.",
+                "می‌تونی هر جوری که راحتی حرف بزنی — می‌فهمم.\n" +
+                "یا از دکمه‌های پایین استفاده کن.",
                 me = false
             )
         )
@@ -32,7 +35,6 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy.asStateFlow()
 
-    // صفحه‌ی تهدیدها
     private val _showThreats = MutableStateFlow(false)
     val showThreats: StateFlow<Boolean> = _showThreats.asStateFlow()
 
@@ -45,21 +47,70 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         _busy.value = true
 
         viewModelScope.launch {
-            val cmd = Parser.parse(input)
-            val reply = try {
-                executor.execute(cmd)
-            } catch (e: Exception) {
-                "خطا: ${e.message}"
-            }
-            _msgs.value = _msgs.value + Msg(reply, false)
-            _busy.value = false
+            try {
+                // ۱) اول LLM رو امتحان کن
+                val history = _msgs.value
+                    .dropLast(1)
+                    .takeLast(6)
+                    .map { it.text to it.me }
 
-            // اگه اسکن ویروس بود و تهدید پیدا شد، صفحه رو باز کن
-            if (cmd == Command.ScanMalware && executor.lastThreats.isNotEmpty()) {
-                _threats.value = executor.lastThreats
-                _showThreats.value = true
+                val result = llm.parse(input, history)
+
+                when (result) {
+                    is LlmAgent.Result.Cmd -> {
+                        // LLM یه دستور تشخیص داد
+                        val reply = try {
+                            executor.execute(result.command)
+                        } catch (e: Exception) {
+                            "خطا در اجرا: ${e.message}"
+                        }
+                        _msgs.value = _msgs.value + Msg(reply, false)
+
+                        // صفحه‌ی تهدیدها
+                        if (result.command == Command.ScanMalware &&
+                            executor.lastThreats.isNotEmpty()
+                        ) {
+                            _threats.value = executor.lastThreats
+                            _showThreats.value = true
+                        }
+                    }
+
+                    is LlmAgent.Result.Chat -> {
+                        // LLM فقط جواب متنی داد
+                        _msgs.value = _msgs.value + Msg(result.text, false)
+                    }
+
+                    is LlmAgent.Result.Error -> {
+                        // LLM خطا داد — برگرد به پارسر محلی
+                        val fallback = localFallback(input)
+                        _msgs.value = _msgs.value + Msg(fallback, false)
+                    }
+                }
+            } catch (e: Exception) {
+                _msgs.value = _msgs.value + Msg("خطا: ${e.message}", false)
+            } finally {
+                _busy.value = false
             }
         }
+    }
+
+    /**
+     * اگه LLM خطا داد (مثلاً اینترنت قطع بود)، برگرد به پارسر محلی
+     */
+    private suspend fun localFallback(input: String): String {
+        val cmd = Parser.parse(input)
+        val reply = try {
+            executor.execute(cmd)
+        } catch (e: Exception) {
+            "خطا: ${e.message}"
+        }
+
+        if (cmd == Command.ScanMalware && executor.lastThreats.isNotEmpty()) {
+            _threats.value = executor.lastThreats
+            _showThreats.value = true
+        }
+
+        return "$reply\n\n(AI در دسترس نبود، از حالت ساده استفاده شد)"
     }
 
     fun openThreats() { _showThreats.value = true }
