@@ -41,24 +41,20 @@ class MainActivity : ComponentActivity() {
                 need += p
         }
 
-        // پایه‌ای
         addIfMissing(Manifest.permission.CALL_PHONE)
         addIfMissing(Manifest.permission.SEND_SMS)
         addIfMissing(Manifest.permission.READ_CONTACTS)
         addIfMissing(Manifest.permission.RECORD_AUDIO)
         addIfMissing(Manifest.permission.READ_PHONE_STATE)
 
-        // جواب دادن به تماس (API 26+)
         if (Build.VERSION.SDK_INT >= 26) {
             addIfMissing(Manifest.permission.ANSWER_PHONE_CALLS)
         }
 
-        // نوتیفیکیشن (API 33+)
         if (Build.VERSION.SDK_INT >= 33) {
             addIfMissing(Manifest.permission.POST_NOTIFICATIONS)
         }
 
-        // خواندن تماس‌ها (API 34+ اجباریه)
         if (Build.VERSION.SDK_INT >= 34) {
             addIfMissing(Manifest.permission.READ_CALL_LOG)
         }
