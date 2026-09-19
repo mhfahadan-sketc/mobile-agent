@@ -14,7 +14,6 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.widget.ImageView
 import androidx.core.app.NotificationCompat
 import com.example.mobileagent.MainActivity
 import com.example.mobileagent.R
@@ -23,9 +22,6 @@ import com.example.mobileagent.R
  * سرویس دکمه‌ی شناور.
  *
  * یه دکمه‌ی گرد با آیکون میکروفون که روی همه‌ی اپ‌ها شناوره.
- * کاربر می‌تونه:
- *  - لمس کنه → VoiceRecognitionActivity باز شه
- *  - بکشش به هر جای صفحه
  */
 class FloatingButtonService : Service() {
 
@@ -79,12 +75,14 @@ class FloatingButtonService : Service() {
             @Suppress("DEPRECATION")
             WindowManager.LayoutParams.TYPE_PHONE
 
+        // ⭐ تبدیل 64dp به پیکسل — اندازه‌ی ثابت
+        val sizePx = (64 * resources.displayMetrics.density).toInt()
+
         layoutParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
+            sizePx,     // ← عرض ثابت
+            sizePx,     // ← ارتفاع ثابت
             type,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,  // ← FLAG_LAYOUT_NO_LIMITS حذف شد
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -94,9 +92,6 @@ class FloatingButtonService : Service() {
 
         // ساخت View
         floatingView = LayoutInflater.from(this).inflate(R.layout.floating_button, null)
-
-        // پیدا کردن آیکون
-        val icon = floatingView?.findViewById<ImageView>(R.id.floating_icon)
 
         // تنظیم کلیک و درگ
         var initialX = 0
@@ -127,7 +122,6 @@ class FloatingButtonService : Service() {
                 }
                 MotionEvent.ACTION_UP -> {
                     if (!isDragging) {
-                        // لمس بدون درگ → باز کردن تشخیص صدا
                         openVoiceRecognition()
                     }
                     true
