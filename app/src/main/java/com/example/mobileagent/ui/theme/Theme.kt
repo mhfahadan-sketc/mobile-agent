@@ -9,16 +9,17 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
 private val LightColors = lightColorScheme(
     primary = PurplePrimary,
-    onPrimary = androidx.compose.ui.graphics.Color.White,
+    onPrimary = Color.White,
     primaryContainer = PurpleSoft,
     onPrimaryContainer = InkDark,
 
     secondary = PurpleDeep,
-    onSecondary = androidx.compose.ui.graphics.Color.White,
+    onSecondary = Color.White,
     secondaryContainer = PurpleLight,
     onSecondaryContainer = InkDark,
 
@@ -37,24 +38,24 @@ private val LightColors = lightColorScheme(
     outlineVariant = LightOutline,
 
     error = ErrorRed,
-    onError = androidx.compose.ui.graphics.Color.White
+    onError = Color.White
 )
 
 private val DarkColors = darkColorScheme(
     primary = PurpleLight,
     onPrimary = InkDark,
     primaryContainer = PurpleDeep,
-    onPrimaryContainer = androidx.compose.ui.graphics.Color.White,
+    onPrimaryContainer = Color.White,
 
     secondary = CyanAccent,
     onSecondary = InkDark,
-    secondaryContainer = Color0xFF2A4A5A,
-    onSecondaryContainer = androidx.compose.ui.graphics.Color.White,
+    secondaryContainer = Color(0xFF2A4A5A),
+    onSecondaryContainer = Color.White,
 
     tertiary = CyanGlow,
     onTertiary = InkDark,
-    tertiaryContainer = Color0xFF1A3A44,
-    onTertiaryContainer = androidx.compose.ui.graphics.Color.White,
+    tertiaryContainer = Color(0xFF1A3A44),
+    onTertiaryContainer = Color.White,
 
     background = DarkBackground,
     onBackground = DarkOnSurface,
@@ -66,11 +67,8 @@ private val DarkColors = darkColorScheme(
     outlineVariant = DarkOutline,
 
     error = ErrorRed,
-    onError = androidx.compose.ui.graphics.Color.White
+    onError = Color.White
 )
-
-private val Color0xFF2A4A5A = androidx.compose.ui.graphics.Color(0xFF2A4A5A)
-private val Color0xFF1A3A44 = androidx.compose.ui.graphics.Color(0xFF1A3A44)
 
 @Composable
 fun MobileAgentTheme(
