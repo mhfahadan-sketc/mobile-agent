@@ -1,10 +1,11 @@
 package com.example.mobileagent.voice
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,20 +14,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -37,26 +37,19 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.File
-import java.net.URL
 
 /**
- * صفحه‌ی تنظیمات صدای پس‌زمینه.
+ * صفحه‌ی تنظیمات دستیار صوتی (نسخه‌ی دکمه‌ی شناور).
  *
- * کارها:
- *  - چک کردن وجود مدل Vosk
- *  - دانلود مدل از اینترنت (بار اول)
- *  - روشن/خاموش کردن سرویس گوش دادن
+ * دو تا تنظیم اصلی:
+ *  ۱. مجوز «نمایش روی اپ‌های دیگه» (مهم‌ترین — بدون این دکمه نشون داده نمی‌شه)
+ *  ۲. کلید روشن/خاموش کردن سرویس دکمه‌ی شناور
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,19 +57,14 @@ fun VoiceSettingsScreen(
     onBack: () -> Unit
 ) {
     val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
 
-    var modelReady by remember { mutableStateOf(false) }
-    var serviceEnabled by remember { mutableStateOf(WakeWordService.isRunning) }
-    var downloading by remember { mutableStateOf(false) }
-    var downloadProgress by remember { mutableStateOf(0f) }
-    var errorText by remember { mutableStateOf<String?>(null) }
+    var hasOverlayPerm by remember { mutableStateOf(canDrawOverlays(ctx)) }
+    var serviceEnabled by remember { mutableStateOf(FloatingButtonService.isRunning) }
 
-    // چک کن مدل نصب هست یا نه
+    // چک کن مجوز overlay داده شده یا نه (وقتی کاربر از تنظیمات برگشت)
     LaunchedEffect(Unit) {
-        modelReady = withContext(Dispatchers.IO) {
-            isModelInstalled(ctx)
-        }
+        hasOverlayPerm = canDrawOverlays(ctx)
+        serviceEnabled = FloatingButtonService.isRunning
     }
 
     Scaffold(
@@ -95,6 +83,7 @@ fun VoiceSettingsScreen(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -120,93 +109,68 @@ fun VoiceSettingsScreen(
                     Spacer(Modifier.width(12.dp))
                     Column {
                         Text(
-                            "چیکار می‌کنه؟",
+                            "دکمه‌ی شناور میکروفون",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            "وقتی روشنه، همیشه به کلمه‌ی «دستیار» گوش می‌ده. " +
-                            "کافیه بگی «دستیار زنگ بزن به علی» بدون اینکه اپ رو باز کنی.",
+                            "یه دکمه‌ی گرد روی همه‌ی اپ‌ها. روش بزن، " +
+                            "حرف بزن، کار انجام می‌شه.",
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
                 }
             }
 
-            // بخش ۲ — وضعیت مدل
+            // بخش ۲ — مجوز overlay
             Card(
                 Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp)
             ) {
                 Column(Modifier.padding(16.dp)) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            if (modelReady) Icons.Default.CheckCircle
-                            else Icons.Default.Download,
-                            null,
-                            tint = if (modelReady) MaterialTheme.colorScheme.primary
-                                   else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(28.dp)
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                "مدل تشخیص صدا",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                if (modelReady) "نصب‌شده ✅"
-                                else "نصب نشده — یه بار دانلود (۴۰ مگابایت)",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+                    Text(
+                        "۱. اجازه‌ی نمایش روی اپ‌ها",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        if (hasOverlayPerm)
+                            "✅ داده شده"
+                        else
+                            "بدون این مجوز، دکمه‌ی شناور نمایش داده نمی‌شه.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (hasOverlayPerm)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                    )
 
-                    if (!modelReady) {
+                    if (!hasOverlayPerm) {
                         Spacer(Modifier.height(12.dp))
-                        if (downloading) {
-                            LinearProgressIndicator(
-                                progress = { downloadProgress },
-                                modifier = Modifier.fillMaxWidth().height(6.dp)
-                            )
-                            Spacer(Modifier.height(6.dp))
-                            Text(
-                                "${(downloadProgress * 100).toInt()}% در حال دانلود…",
-                                style = MaterialTheme.typography.labelMedium
-                            )
-                        } else {
-                            Button(
-                                onClick = {
-                                    scope.launch {
-                                        downloading = true
-                                        errorText = null
-                                        downloadProgress = 0f
-                                        val ok = downloadModel(ctx) { p ->
-                                            downloadProgress = p
-                                        }
-                                        downloading = false
-                                        if (ok) {
-                                            modelReady = true
-                                        } else {
-                                            errorText = "دانلود نشد. اینترنت رو چک کن."
-                                        }
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("دانلود مدل")
-                            }
+                        Button(
+                            onClick = {
+                                val i = Intent(
+                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    Uri.parse("package:${ctx.packageName}")
+                                ).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                try {
+                                    ctx.startActivity(i)
+                                } catch (_: Exception) { }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.OpenInNew, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("باز کردن تنظیمات")
                         }
                     }
                 }
             }
 
-            // بخش ۳ — کلید روشن/خاموش
+            // بخش ۳ — کلید سرویس
             Card(
                 Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp)
@@ -217,41 +181,60 @@ fun VoiceSettingsScreen(
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(
-                            "گوش دادن دائمی",
+                            "۲. دکمه‌ی شناور",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            "سرویس توی پس‌زمینه فعال باشه",
+                            if (serviceEnabled)
+                                "روشن — دکمه روی صفحه‌ست"
+                            else
+                                "خاموش",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     Switch(
                         checked = serviceEnabled,
-                        enabled = modelReady,
+                        enabled = hasOverlayPerm,
                         onCheckedChange = { enabled ->
                             serviceEnabled = enabled
                             if (enabled) {
-                                WakeWordService.Starter.start(ctx)
+                                FloatingButtonService.Starter.start(ctx)
                             } else {
-                                WakeWordService.Starter.stop(ctx)
+                                FloatingButtonService.Starter.stop(ctx)
                             }
                         }
                     )
                 }
             }
 
-            // نمایش خطا
-            errorText?.let {
-                Text(
-                    it,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium
+            // راهنما
+            Card(
+                Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
                 )
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(
+                        "چطور استفاده کنم؟",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "۱. دکمه‌ی بنفش 🎤 رو بزن\n" +
+                        "۲. توی صفحه‌ای که باز می‌شه، حرفت رو بزن\n" +
+                        "۳. دکمه رو می‌تونی بکشی و جاش رو عوض کنی\n" +
+                        "۴. از هر اپی، حتی وسط بازی، کار می‌کنه",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
 
-            // هشدار باتری
+            // هشدار
             Card(
                 Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp),
@@ -260,7 +243,8 @@ fun VoiceSettingsScreen(
                 )
             ) {
                 Text(
-                    "⚠️ توجه: فعال بودن این سرویس باعث می‌شه باتری روزی ۱۵-۲۵٪ بیشتر مصرف شه.",
+                    "⚠️ وقتی این سرویس روشنه، یه نوتیف دائمی توی نوار وضعیت داری. " +
+                    "برای خاموش کردن، از همون نوتیف یا از این صفحه استفاده کن.",
                     Modifier.padding(16.dp),
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -269,94 +253,11 @@ fun VoiceSettingsScreen(
     }
 }
 
-// ═══════════════════════════════════════════════════
-//  دانلود و استخراج مدل Vosk
-// ═══════════════════════════════════════════════════
-
-private const val MODEL_DIR = "vosk-model"
-
 /**
- * URL مدل فارسی Vosk — از سایت رسمی alphacephei.com
- * مدل small: ~40MB
+ * چک کن مجوز overlay داده شده یا نه.
  */
-private const val MODEL_URL =
-    "https://alphacephei.com/vosk/models/vosk-model-small-fa-0.5.zip"
-
-/**
- * چک کن مدل از قبل نصب هست یا نه.
- */
-private fun isModelInstalled(ctx: Context): Boolean {
-    val dir = File(ctx.filesDir, MODEL_DIR)
-    return dir.exists() && dir.listFiles()?.isNotEmpty() == true
-}
-
-/**
- * مدل رو دانلود و استخراج کن.
- * @param onProgress 0..1
- * @return true اگه موفق بود
- */
-private suspend fun downloadModel(
-    ctx: Context,
-    onProgress: (Float) -> Unit
-): Boolean = withContext(Dispatchers.IO) {
-    val tempZip = File(ctx.cacheDir, "model.zip")
-    val targetDir = File(ctx.filesDir, MODEL_DIR)
-
-    try {
-        // ۱. دانلود
-        val url = URL(MODEL_URL)
-        val conn = url.openConnection()
-        conn.connect()
-        val total = conn.contentLengthLong
-        val input = conn.getInputStream()
-
-        tempZip.outputStream().use { out ->
-            val buf = ByteArray(8192)
-            var downloaded = 0L
-            var read: Int
-            while (input.read(buf).also { read = it } > 0) {
-                out.write(buf, 0, read)
-                downloaded += read
-                if (total > 0) {
-                    onProgress((downloaded.toFloat() / total).coerceIn(0f, 1f))
-                }
-            }
-        }
-        input.close()
-
-        // ۲. استخراج
-        if (targetDir.exists()) targetDir.deleteRecursively()
-        targetDir.mkdirs()
-
-        java.util.zip.ZipInputStream(tempZip.inputStream()).use { zip ->
-            var entry = zip.nextEntry
-            while (entry != null) {
-                // مسیر رو از zip حذف کن (چون یه پوشه‌ی اضافی داره)
-                val name = entry.name.substringAfter('/')
-                if (name.isNotEmpty()) {
-                    val f = File(targetDir, name)
-                    if (entry.isDirectory) {
-                        f.mkdirs()
-                    } else {
-                        f.parentFile?.mkdirs()
-                        f.outputStream().use { o ->
-                            zip.copyTo(o)
-                        }
-                    }
-                }
-                zip.closeEntry()
-                entry = zip.nextEntry
-            }
-        }
-
-        // ۳. پاک کردن فایل zip
-        tempZip.delete()
-
-        onProgress(1f)
+private fun canDrawOverlays(ctx: Context): Boolean =
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M)
+        Settings.canDrawOverlays(ctx)
+    else
         true
-    } catch (e: Exception) {
-        e.printStackTrace()
-        tempZip.delete()
-        false
-    }
-}
