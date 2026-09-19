@@ -8,6 +8,7 @@ import com.example.mobileagent.agent.Command
 import com.example.mobileagent.agent.LlmAgent
 import com.example.mobileagent.agent.Parser
 import com.example.mobileagent.security.Threat
+import com.example.mobileagent.voice.VoiceCommandBus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,14 +42,52 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private val _threats = MutableStateFlow<List<Threat>>(emptyList())
     val threats: StateFlow<List<Threat>> = _threats.asStateFlow()
 
-    fun send(input: String) {
+    // برای صفحه‌ی تنظیمات صدا
+    private val _showVoiceSettings = MutableStateFlow(false)
+    val showVoiceSettings: StateFlow<Boolean> = _showVoiceSettings.asStateFlow()
+
+    // آخرین هشدار صوتی که نشون داده شد
+    private val _voiceStatus = MutableStateFlow<String?>(null)
+    val voiceStatus: StateFlow<String?> = _voiceStatus.asStateFlow()
+
+    init {
+        // گوش دادن به رویدادهای سرویس صدا
+        viewModelScope.launch {
+            VoiceCommandBus.events.collect { event ->
+                when (event) {
+                    is VoiceCommandBus.Event.WakeWordDetected -> {
+                        _voiceStatus.value = "🎤 بله؟"
+                    }
+                    is VoiceCommandBus.Event.CommandRecognized -> {
+                        _voiceStatus.value = null
+                        // دستور ضبط‌شده رو خودکار بفرست
+                        send(event.text, fromVoice = true)
+                    }
+                    is VoiceCommandBus.Event.Listening -> {
+                        _voiceStatus.value = null
+                    }
+                    is VoiceCommandBus.Event.Idle -> {
+                        _voiceStatus.value = null
+                    }
+                    is VoiceCommandBus.Event.Error -> {
+                        _voiceStatus.value = "خطای صدا: ${event.message}"
+                    }
+                }
+            }
+        }
+    }
+
+    fun send(input: String, fromVoice: Boolean = false) {
         if (input.isBlank() || _busy.value) return
-        _msgs.value = _msgs.value + Msg(input, true)
+
+        // اگه از صوت اومده، یه علامت کوچیک بذار
+        val displayText = if (fromVoice) "🎤 $input" else input
+        _msgs.value = _msgs.value + Msg(displayText, true)
         _busy.value = true
 
         viewModelScope.launch {
             try {
-                // ۱) اول LLM رو امتحان کن
+                // ۱) اول LLM
                 val history = _msgs.value
                     .dropLast(1)
                     .takeLast(6)
@@ -58,7 +97,6 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
                 when (result) {
                     is LlmAgent.Result.Cmd -> {
-                        // LLM یه دستور تشخیص داد
                         val reply = try {
                             executor.execute(result.command)
                         } catch (e: Exception) {
@@ -66,7 +104,6 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                         }
                         _msgs.value = _msgs.value + Msg(reply, false)
 
-                        // صفحه‌ی تهدیدها
                         if (result.command == Command.ScanMalware &&
                             executor.lastThreats.isNotEmpty()
                         ) {
@@ -76,12 +113,10 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     }
 
                     is LlmAgent.Result.Chat -> {
-                        // LLM فقط جواب متنی داد
                         _msgs.value = _msgs.value + Msg(result.text, false)
                     }
 
                     is LlmAgent.Result.Error -> {
-                        // LLM خطا داد — برگرد به پارسر محلی
                         val fallback = localFallback(input)
                         _msgs.value = _msgs.value + Msg(fallback, false)
                     }
@@ -94,9 +129,6 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /**
-     * اگه LLM خطا داد (مثلاً اینترنت قطع بود)، برگرد به پارسر محلی
-     */
     private suspend fun localFallback(input: String): String {
         val cmd = Parser.parse(input)
         val reply = try {
@@ -115,4 +147,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun openThreats() { _showThreats.value = true }
     fun closeThreats() { _showThreats.value = false }
+
+    fun openVoiceSettings() { _showVoiceSettings.value = true }
+    fun closeVoiceSettings() { _showVoiceSettings.value = false }
 }
