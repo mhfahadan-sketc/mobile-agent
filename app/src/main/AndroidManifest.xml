@@ -17,20 +17,16 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
-    <!-- دکمه‌ی شناور -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
-    <!-- صدا -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
-    <!-- تماس -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
 
-    <!-- کنترلر والدین -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
 
@@ -75,7 +71,6 @@
                 android:value="floating_voice_assistant_button" />
         </service>
 
-        <!-- گیرنده‌ی تماس ورودی -->
         <receiver
             android:name=".call.PhoneStateReceiver"
             android:exported="true">
@@ -84,7 +79,6 @@
             </intent-filter>
         </receiver>
 
-        <!-- گیرنده‌ی دکمه‌های نوتیف تماس -->
         <receiver
             android:name=".call.CallActionReceiver"
             android:exported="false">
