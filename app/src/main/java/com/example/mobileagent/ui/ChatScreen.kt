@@ -7,7 +7,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -29,6 +28,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -149,9 +149,40 @@ fun ChatScreen(vm: ChatViewModel = viewModel()) {
                         }
                     }
                 }
+
+                // نشونگر "داره فکر می‌کنه"
+                if (busy) {
+                    item {
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.widthIn(max = 200.dp)
+                            ) {
+                                Row(
+                                    Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        "دارم فکر می‌کنم…",
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
-            // نوار پیشرفت
+            // نوار پیشرفت اسکن
             ScanProgressBar()
 
             // نوار دکمه‌های سریع
@@ -169,15 +200,17 @@ fun ChatScreen(vm: ChatViewModel = viewModel()) {
                     value = input,
                     onValueChange = { input = it },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("مثلاً: زنگ بزن به علی") },
+                    placeholder = { Text("هر جوری دوست داری بگو…") },
                     shape = RoundedCornerShape(24.dp),
-                    maxLines = 4
+                    maxLines = 4,
+                    enabled = !busy
                 )
                 Spacer(Modifier.width(6.dp))
 
                 IconButton(
                     onClick = { startVoice() },
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.size(48.dp),
+                    enabled = !busy
                 ) {
                     Icon(
                         Icons.Default.Mic,
@@ -219,8 +252,7 @@ fun QuickActionsRow(
         "💾" to "کش رو پاک کن",
         "📊" to "چقدر فضا اشغال شده",
         "⏰" to "ساعت ۷ آلارم بذار",
-        "🚀" to "اینستاگرام رو باز کن",
-        "📞" to "زنگ بزن به علی"
+        "🚀" to "اینستاگرام رو باز کن"
     )
 
     LazyRow(
