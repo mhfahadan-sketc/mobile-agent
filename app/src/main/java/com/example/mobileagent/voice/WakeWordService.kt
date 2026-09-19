@@ -1,6 +1,5 @@
 package com.example.mobileagent.voice
 
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -14,16 +13,13 @@ import androidx.core.app.NotificationCompat
 import com.example.mobileagent.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.vosk.Model
 import org.vosk.Recognizer
 import org.vosk.android.RecognitionListener
 import org.vosk.android.SpeechService
-import org.vosk.android.StorageService
 import java.io.File
 
 /**
@@ -32,7 +28,7 @@ import java.io.File
  * در پس‌زمینه کار می‌کنه و به کلمه‌ی کلیدی («دستیار») گوش می‌ده.
  * وقتی شنید، یه نوتیف نشون می‌ده و منتظر دستور می‌مونه.
  *
- * این سرویس آفلاین کار می‌کنه — از مدل Vosk استفاده می‌کنه.
+ * مدل رو از filesDir/vosk-model می‌خونه (جایی که VoiceSettingsScreen دانلود می‌کنه).
  */
 class WakeWordService : Service(), RecognitionListener {
 
@@ -44,9 +40,8 @@ class WakeWordService : Service(), RecognitionListener {
         const val ACTION_START = "com.example.mobileagent.WAKE_START"
         const val ACTION_STOP = "com.example.mobileagent.WAKE_STOP"
 
-        /**
-         * کلمه‌های کلیدی که کاربر می‌تونه بگه
-         */
+        private const val MODEL_DIR = "vosk-model"
+
         private val WAKE_WORDS = listOf(
             "دستیار",
             "دستیارم",
@@ -63,7 +58,6 @@ class WakeWordService : Service(), RecognitionListener {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var model: Model? = null
     private var speechService: SpeechService? = null
-    private var listenerJob: Job? = null
 
     private var isInitializing = false
     private var lastWakeTime: Long = 0
@@ -93,27 +87,35 @@ class WakeWordService : Service(), RecognitionListener {
     private fun initVosk() {
         isInitializing = true
 
-        // مدل رو از assets به حافظه‌ی داخلی کپی کن (بار اول)
-        StorageService.unpack(
-            this,
-            "model-fa",       // ← پوشه‌ی مدل توی assets
-            "model",
-            { m ->
-                model = m
-                isInitializing = false
-                startRecognition()
-            },
-            { e ->
-                Log.e(TAG, "Vosk unpack failed", e)
-                isInitializing = false
-                VoiceCommandBus.emit(
-                    VoiceCommandBus.Event.Error(
-                        "مدل Vosk نصب نشد. از تنظیمات دانلود کن."
-                    )
+        // مدل توی filesDir/vosk-model هست (دونلود شده از تنظیمات)
+        val modelDir = File(filesDir, MODEL_DIR)
+
+        if (!modelDir.exists() || modelDir.listFiles()?.isEmpty() != false) {
+            Log.w(TAG, "Model not found at ${modelDir.absolutePath}")
+            isInitializing = false
+            VoiceCommandBus.emit(
+                VoiceCommandBus.Event.Error(
+                    "مدل نصب نیست. از تنظیمات دانلود کن."
                 )
-                stopSelf()
-            }
-        )
+            )
+            stopSelf()
+            return
+        }
+
+        try {
+            Log.i(TAG, "Loading model from ${modelDir.absolutePath}")
+            val m = Model(modelDir.absolutePath)
+            model = m
+            isInitializing = false
+            startRecognition()
+        } catch (e: Exception) {
+            Log.e(TAG, "Model load failed", e)
+            isInitializing = false
+            VoiceCommandBus.emit(
+                VoiceCommandBus.Event.Error("مدل خرابه، دوباره دانلود کن")
+            )
+            stopSelf()
+        }
     }
 
     private fun startRecognition() {
@@ -128,6 +130,7 @@ class WakeWordService : Service(), RecognitionListener {
             Log.i(TAG, "Listening started")
         } catch (e: Exception) {
             Log.e(TAG, "startRecognition failed", e)
+            isRunning = false
             stopSelf()
         }
     }
@@ -137,8 +140,7 @@ class WakeWordService : Service(), RecognitionListener {
     // ═══════════════════════════════════════
 
     override fun onPartialResult(hypothesis: String?) {
-        if (hypothesis.isNullOrBlank()) return
-        // نتیجه‌ی نهایی از onResult میاد، این فقط برای debug
+        // نتیجه‌ی نهایی از onResult میاد
     }
 
     override fun onResult(hypothesis: String?) {
@@ -152,12 +154,10 @@ class WakeWordService : Service(), RecognitionListener {
 
             Log.d(TAG, "Recognized: $text")
 
-            // چک کن کلمه‌ی کلیدی توش هست یا نه
             val hasWake = WAKE_WORDS.any { text.contains(it, ignoreCase = true) }
 
             if (hasWake) {
                 val now = System.currentTimeMillis()
-                // نذار دو بار پشت هم trigger بشه (زیر ۳ ثانیه)
                 if (now - lastWakeTime < 3000) return
                 lastWakeTime = now
 
@@ -171,13 +171,9 @@ class WakeWordService : Service(), RecognitionListener {
                 command = command.trim()
 
                 if (command.isNotEmpty()) {
-                    // کاربر توی همون جمله دستور رو گفت
                     VoiceCommandBus.emit(
                         VoiceCommandBus.Event.CommandRecognized(command)
                     )
-                } else {
-                    // فقط کلمه‌ی کلیدی گفت — منتظر دستور بعدی
-                    // توی نسخه‌های بعدی: ۵ ثانیه گوش بده به جمله‌ی بعدی
                 }
             }
         } catch (e: Exception) {
