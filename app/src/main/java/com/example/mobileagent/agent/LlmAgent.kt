@@ -2,6 +2,7 @@ package com.example.mobileagent.agent
 
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -14,17 +15,17 @@ import java.util.concurrent.TimeUnit
 /**
  * کلاس اتصال به Gemini از طریق Apps Script.
  *
- * جریان:
- *  ۱. متن کاربر گرفته می‌شه
- *  ۲. POST به Apps Script
- *  ۳. Apps Script می‌فرسته به Gemini
- *  ۴. Gemini یه JSON برمی‌گردونه مثل {"action":"call","contact":"علی"}
- *  ۵. این کلاس اون JSON رو به Command تبدیل می‌کنه
+ * بهبود یافته:
+ *  - Retry خودکار (تا ۳ بار)
+ *  - Timeout بیشتر (cold start Apps Script)
+ *  - Backoff تصاعدی بین تلاش‌ها
  */
 class LlmAgent {
 
     companion object {
         private const val TAG = "LlmAgent"
+        private const val MAX_RETRIES = 3
+        private const val RETRY_DELAY_BASE_MS = 800L
 
         // ⚠️ بعداً این رو به GitHub Secrets منتقل می‌کنیم
         private const val API_URL =
@@ -34,36 +35,55 @@ class LlmAgent {
     }
 
     sealed interface Result {
-        /** LLM یه دستور تشخیص داد */
         data class Cmd(val command: Command) : Result
-        /** LLM فقط یه جواب متنی داد */
         data class Chat(val text: String) : Result
-        /** خطا در ارتباط یا پردازش */
         data class Error(val message: String) : Result
     }
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
+        .callTimeout(90, TimeUnit.SECONDS)
         .followRedirects(true)
         .followSslRedirects(true)
         .retryOnConnectionFailure(true)
         .build()
 
-    /**
-     * پیام کاربر رو به LLM می‌فرسته و Command رو برمی‌گردونه.
-     *
-     * @param text متن ورودی کاربر
-     * @param history تاریخچه‌ی چت به فرمت (متن، من؟)
-     */
     suspend fun parse(
         text: String,
         history: List<Pair<String, Boolean>> = emptyList()
     ): Result = withContext(Dispatchers.IO) {
 
-        try {
-            // ساخت بدنه‌ی درخواست
+        var lastError: String = "unknown"
+
+        for (attempt in 0 until MAX_RETRIES) {
+            if (attempt > 0) {
+                // backoff تصاعدی: ۸۰۰ms، ۱۶۰۰ms
+                delay(RETRY_DELAY_BASE_MS * attempt)
+                Log.d(TAG, "Retry attempt ${attempt + 1}")
+            }
+
+            val result = tryRequest(text, history)
+            when (result) {
+                is Result.Error -> {
+                    lastError = result.message
+                    Log.w(TAG, "Attempt ${attempt + 1} failed: $lastError")
+                    // اگه خطا 4xx بود، بی‌فایده‌ست retry
+                    if (lastError.startsWith("HTTP 4")) break
+                }
+                else -> return@withContext result
+            }
+        }
+
+        Result.Error(lastError)
+    }
+
+    private fun tryRequest(
+        text: String,
+        history: List<Pair<String, Boolean>>
+    ): Result {
+        return try {
             val historyArray = JSONArray()
             history.takeLast(6).forEach { (t, me) ->
                 historyArray.put(JSONObject().apply {
@@ -87,45 +107,39 @@ class LlmAgent {
                 val respBody = resp.body?.string().orEmpty()
 
                 if (!resp.isSuccessful) {
-                    Log.w(TAG, "HTTP ${resp.code}: $respBody")
-                    return@withContext Result.Error("HTTP ${resp.code}")
+                    return Result.Error("HTTP ${resp.code}")
                 }
 
                 if (respBody.isBlank()) {
-                    return@withContext Result.Error("پاسخ خالی از سرور")
+                    return Result.Error("پاسخ خالی از سرور")
                 }
 
                 val json = try {
                     JSONObject(respBody)
                 } catch (e: Exception) {
                     Log.e(TAG, "JSON parse failed: $respBody", e)
-                    return@withContext Result.Error("پاسخ نامعتبر")
+                    return Result.Error("پاسخ نامعتبر")
                 }
 
                 if (json.has("error")) {
-                    return@withContext Result.Error(json.optString("error"))
+                    return Result.Error(json.optString("error"))
                 }
 
                 val llmText = json.optString("text", "").trim()
                 if (llmText.isEmpty()) {
-                    return@withContext Result.Error("LLM جوابی نداد")
+                    return Result.Error("LLM جوابی نداد")
                 }
 
-                return@withContext parseAction(llmText)
+                return parseAction(llmText)
             }
 
         } catch (e: Exception) {
-            Log.e(TAG, "parse failed", e)
+            Log.e(TAG, "Request failed", e)
             Result.Error(e.message ?: "خطای شبکه")
         }
     }
 
-    /**
-     * متن برگشتی LLM رو به Command تبدیل می‌کنه.
-     * LLM باید یه JSON خالص بده مثل {"action":"call","contact":"علی"}
-     */
     private fun parseAction(raw: String): Result {
-        // پاک‌سازی markdown احتمالی
         var s = raw.trim()
         if (s.startsWith("```")) {
             s = s.removePrefix("```json")
@@ -134,7 +148,6 @@ class LlmAgent {
                 .trim()
         }
 
-        // اگه JSON نبود، به‌عنوان chat برمی‌گردونیم
         if (!s.startsWith("{")) {
             return Result.Chat(s)
         }
@@ -149,40 +162,34 @@ class LlmAgent {
                     if (c.isEmpty()) Result.Error("اسم مخاطب نیامده")
                     else Result.Cmd(Command.Call(c))
                 }
-
                 "sms" -> {
                     val c = obj.optString("contact", "").trim()
                     val b = obj.optString("body", "").trim()
                     if (c.isEmpty()) Result.Error("اسم مخاطب نیامده")
                     else Result.Cmd(Command.Sms(c, b.ifEmpty { "سلام" }))
                 }
-
                 "whatsapp" -> {
                     val c = obj.optString("contact", "").trim()
                     val b = obj.optString("body", "").trim().ifEmpty { null }
                     if (c.isEmpty()) Result.Error("اسم مخاطب نیامده")
                     else Result.Cmd(Command.WhatsApp(c, b))
                 }
-
                 "open_app" -> {
                     val n = obj.optString("name", "").trim()
                     if (n.isEmpty()) Result.Error("اسم اپ نیامده")
                     else Result.Cmd(Command.OpenApp(n))
                 }
-
                 "web_search" -> {
                     val q = obj.optString("query", "").trim()
                     if (q.isEmpty()) Result.Error("عبارت جستجو نیامده")
                     else Result.Cmd(Command.WebSearch(q))
                 }
-
                 "alarm" -> {
                     val h = obj.optInt("hour", -1)
                     val m = obj.optInt("minute", 0)
                     if (h < 0 || h > 23) Result.Error("ساعت نامعتبر")
                     else Result.Cmd(Command.SetAlarm(h, m.coerceIn(0, 59)))
                 }
-
                 "scan_malware" -> Result.Cmd(Command.ScanMalware)
                 "find_duplicates" -> Result.Cmd(Command.FindDuplicates)
                 "delete_duplicates" -> Result.Cmd(Command.DeleteDuplicates)
@@ -191,13 +198,11 @@ class LlmAgent {
                 "clean_cache" -> Result.Cmd(Command.CleanCache)
                 "analyze_storage" -> Result.Cmd(Command.AnalyzeStorage)
                 "help" -> Result.Cmd(Command.Help)
-
                 "chat" -> {
                     val t = obj.optString("text", "").trim()
                     if (t.isEmpty()) Result.Error("پاسخ متنی خالی")
                     else Result.Chat(t)
                 }
-
                 else -> Result.Chat(s)
             }
         } catch (e: Exception) {
