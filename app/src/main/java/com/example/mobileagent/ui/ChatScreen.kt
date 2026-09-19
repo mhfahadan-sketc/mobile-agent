@@ -11,7 +11,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -33,11 +32,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -68,15 +67,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.mobileagent.R
 import com.example.mobileagent.core.ProgressChannel
 import com.example.mobileagent.core.ScanProgress
+import com.example.mobileagent.voice.VoiceSettingsScreen
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
-data class ChatMessage(
-    val text: String,
-    val me: Boolean,
-    val time: String = nowTime()
-)
 
 private fun nowTime(): String =
     SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
@@ -91,11 +85,22 @@ fun ChatScreen(
     val busy by vm.busy.collectAsStateWithLifecycle()
     val showThreats by vm.showThreats.collectAsStateWithLifecycle()
     val threats by vm.threats.collectAsStateWithLifecycle()
+    val showVoiceSettings by vm.showVoiceSettings.collectAsStateWithLifecycle()
+    val voiceStatus by vm.voiceStatus.collectAsStateWithLifecycle()
 
+    // صفحه‌ی تهدیدها
     if (showThreats) {
         ThreatDetailScreen(
             threats = threats,
             onBack = { vm.closeThreats() }
+        )
+        return
+    }
+
+    // صفحه‌ی تنظیمات صدا
+    if (showVoiceSettings) {
+        VoiceSettingsScreen(
+            onBack = { vm.closeVoiceSettings() }
         )
         return
     }
@@ -145,7 +150,6 @@ fun ChatScreen(
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        // آیکون کوچیک اپ
                         Card40()
                         Spacer(Modifier.width(10.dp))
                         Column {
@@ -170,6 +174,15 @@ fun ChatScreen(
                         )
                     }
                 },
+                actions = {
+                    IconButton(onClick = { vm.openVoiceSettings() }) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = "تنظیمات صدا",
+                            tint = cs.primary
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = cs.surface,
                     titleContentColor = cs.onSurface
@@ -184,6 +197,22 @@ fun ChatScreen(
                 .fillMaxSize()
                 .background(cs.background)
         ) {
+            // نوار وضعیت صدا
+            voiceStatus?.let { status ->
+                Surface(
+                    Modifier.fillMaxWidth(),
+                    color = cs.primaryContainer.copy(alpha = 0.6f)
+                ) {
+                    Text(
+                        text = status,
+                        Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = cs.onPrimaryContainer,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
             // لیست پیام‌ها
             LazyColumn(
                 state = listState,
@@ -295,7 +324,6 @@ private fun MessageBubble(
     val cs = MaterialTheme.colorScheme
 
     if (me) {
-        // پیام کاربر — راست
         Row(
             Modifier.fillMaxWidth().padding(vertical = 4.dp),
             horizontalArrangement = Arrangement.Start,
@@ -332,13 +360,11 @@ private fun MessageBubble(
             }
         }
     } else {
-        // پیام دستیار — چپ با آواتار
         Row(
             Modifier.fillMaxWidth().padding(vertical = 4.dp),
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.Bottom
         ) {
-            // آواتار
             Surface(
                 modifier = Modifier.size(32.dp),
                 shape = CircleShape,
@@ -431,7 +457,6 @@ private fun InputBar(
 
             Spacer(Modifier.width(6.dp))
 
-            // میکروفون — دکمه گرد
             Surface(
                 color = cs.primaryContainer,
                 shape = CircleShape,
@@ -451,7 +476,6 @@ private fun InputBar(
 
             Spacer(Modifier.width(6.dp))
 
-            // ارسال
             Surface(
                 color = if (value.isBlank() || !enabled) cs.surfaceVariant else cs.primary,
                 shape = CircleShape,
