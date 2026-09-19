@@ -17,10 +17,14 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
-    <!-- برای سرویس گوش دادن دائمی -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- برای دکمه‌ی شناور -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <!-- برای دستور صوتی از طریق میکروفون گوگل -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
@@ -44,11 +48,24 @@
             </intent-filter>
         </activity>
 
-        <!-- سرویس گوش دادن دائمی -->
-        <service
-            android:name=".voice.WakeWordService"
+        <!-- Activity شفاف برای تشخیص صدا -->
+        <activity
+            android:name=".voice.VoiceRecognitionActivity"
             android:exported="false"
-            android:foregroundServiceType="microphone"
-            android:stopWithTask="false" />
+            android:launchMode="singleTop"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:noHistory="true" />
+
+        <!-- سرویس دکمه‌ی شناور -->
+        <service
+            android:name=".voice.FloatingButtonService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            android:stopWithTask="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="floating_voice_assistant_button" />
+        </service>
     </application>
 </manifest>
