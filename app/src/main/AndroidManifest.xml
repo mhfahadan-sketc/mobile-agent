@@ -17,13 +17,22 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
-    <!-- برای دکمه‌ی شناور -->
+    <!-- دکمه‌ی شناور -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
-    <!-- برای دستور صوتی از طریق میکروفون گوگل -->
+    <!-- صدا -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- تماس -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+
+    <!-- کنترلر والدین -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
 
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -48,7 +57,6 @@
             </intent-filter>
         </activity>
 
-        <!-- Activity شفاف برای تشخیص صدا -->
         <activity
             android:name=".voice.VoiceRecognitionActivity"
             android:exported="false"
@@ -57,7 +65,6 @@
             android:excludeFromRecents="true"
             android:noHistory="true" />
 
-        <!-- سرویس دکمه‌ی شناور -->
         <service
             android:name=".voice.FloatingButtonService"
             android:exported="false"
@@ -67,5 +74,25 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="floating_voice_assistant_button" />
         </service>
+
+        <!-- گیرنده‌ی تماس ورودی -->
+        <receiver
+            android:name=".call.PhoneStateReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.PHONE_STATE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- گیرنده‌ی دکمه‌های نوتیف تماس -->
+        <receiver
+            android:name=".call.CallActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.mobileagent.CALL_ANSWER" />
+                <action android:name="com.example.mobileagent.CALL_REJECT" />
+                <action android:name="com.example.mobileagent.CALL_SMS" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>
