@@ -12,8 +12,4 @@
         android:width="2dp"
         android:color="#80FFFFFF" />
 
-    <size
-        android:width="64dp"
-        android:height="64dp" />
-
 </shape>
