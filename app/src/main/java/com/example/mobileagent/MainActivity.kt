@@ -18,7 +18,13 @@ class MainActivity : ComponentActivity() {
 
     private val reqPerms = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { }
+    ) { grants ->
+        // اگه RECORD_AUDIO داده شد، سرویس صدا رو راه بنداز (اگه قبلاً فعال بوده)
+        val micGranted = grants[Manifest.permission.RECORD_AUDIO] == true
+        if (micGranted) {
+            // کاربر بعداً می‌تونه از تنظیمات سرویس رو روشن کنه
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,6 +49,7 @@ class MainActivity : ComponentActivity() {
         addIfMissing(Manifest.permission.CALL_PHONE)
         addIfMissing(Manifest.permission.SEND_SMS)
         addIfMissing(Manifest.permission.READ_CONTACTS)
+        addIfMissing(Manifest.permission.RECORD_AUDIO)
         if (Build.VERSION.SDK_INT >= 33)
             addIfMissing(Manifest.permission.POST_NOTIFICATIONS)
 
