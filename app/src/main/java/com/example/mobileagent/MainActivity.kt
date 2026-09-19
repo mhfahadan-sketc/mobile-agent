@@ -7,12 +7,12 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.core.content.ContextCompat
-import com.example.mobileagent.ui.ChatScreen
+import com.example.mobileagent.ui.MobileAgentApp
+import com.example.mobileagent.ui.theme.MobileAgentTheme
 
 class MainActivity : ComponentActivity() {
 
@@ -24,9 +24,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         askPermissions()
         setContent {
-            MaterialTheme {
-                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                    ChatScreen()
+            MobileAgentTheme {
+                CompositionLocalProvider(
+                    LocalLayoutDirection provides LayoutDirection.Rtl
+                ) {
+                    MobileAgentApp()
                 }
             }
         }
