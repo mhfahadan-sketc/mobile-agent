@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -28,12 +29,12 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,13 +44,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 
 /**
  * صفحه‌ی تنظیمات دستیار صوتی (نسخه‌ی دکمه‌ی شناور).
  *
- * دو تا تنظیم اصلی:
- *  ۱. مجوز «نمایش روی اپ‌های دیگه» (مهم‌ترین — بدون این دکمه نشون داده نمی‌شه)
- *  ۲. کلید روشن/خاموش کردن سرویس دکمه‌ی شناور
+ * نکته مهم: هر بار که این صفحه از پس‌زمینه برمی‌گرده (Resume)،
+ * مجوز overlay دوباره چک می‌شه (چون کاربر توی تنظیمات بوده).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,10 +62,11 @@ fun VoiceSettingsScreen(
     var hasOverlayPerm by remember { mutableStateOf(canDrawOverlays(ctx)) }
     var serviceEnabled by remember { mutableStateOf(FloatingButtonService.isRunning) }
 
-    // چک کن مجوز overlay داده شده یا نه (وقتی کاربر از تنظیمات برگشت)
-    LaunchedEffect(Unit) {
+    // هر بار که صفحه Resume می‌شه (از تنظیمات برگشتیم)، مجوز رو چک کن
+    LifecycleResumeEffect(Unit) {
         hasOverlayPerm = canDrawOverlays(ctx)
         serviceEnabled = FloatingButtonService.isRunning
+        onPauseOrDispose { }
     }
 
     Scaffold(
@@ -74,6 +76,15 @@ fun VoiceSettingsScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "بازگشت")
+                    }
+                },
+                actions = {
+                    // دکمه‌ی refresh دستی
+                    IconButton(onClick = {
+                        hasOverlayPerm = canDrawOverlays(ctx)
+                        serviceEnabled = FloatingButtonService.isRunning
+                    }) {
+                        Icon(Icons.Default.Refresh, "بروزرسانی")
                     }
                 }
             )
@@ -136,36 +147,37 @@ fun VoiceSettingsScreen(
                     Spacer(Modifier.height(4.dp))
                     Text(
                         if (hasOverlayPerm)
-                            "✅ داده شده"
+                            "✅ داده شده — می‌تونی دکمه رو روشن کنی"
                         else
-                            "بدون این مجوز، دکمه‌ی شناور نمایش داده نمی‌شه.",
+                            "❌ داده نشده — از دکمه‌ی زیر فعال کن",
                         style = MaterialTheme.typography.bodySmall,
                         color = if (hasOverlayPerm)
                             MaterialTheme.colorScheme.primary
                         else
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                            MaterialTheme.colorScheme.error
                     )
 
-                    if (!hasOverlayPerm) {
-                        Spacer(Modifier.height(12.dp))
-                        Button(
-                            onClick = {
-                                val i = Intent(
-                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                    Uri.parse("package:${ctx.packageName}")
-                                ).apply {
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                try {
-                                    ctx.startActivity(i)
-                                } catch (_: Exception) { }
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.OpenInNew, null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("باز کردن تنظیمات")
-                        }
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = {
+                            val i = Intent(
+                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:${ctx.packageName}")
+                            ).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            try {
+                                ctx.startActivity(i)
+                            } catch (_: Exception) { }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.OpenInNew, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            if (hasOverlayPerm) "تنظیمات مجوز" 
+                            else "باز کردن تنظیمات"
+                        )
                     }
                 }
             }
@@ -186,10 +198,11 @@ fun VoiceSettingsScreen(
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            if (serviceEnabled)
-                                "روشن — دکمه روی صفحه‌ست"
-                            else
-                                "خاموش",
+                            when {
+                                !hasOverlayPerm -> "اول مجوز بالا رو بده"
+                                serviceEnabled -> "روشن — دکمه روی صفحه‌ست"
+                                else -> "آماده — کلید رو بزن"
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
