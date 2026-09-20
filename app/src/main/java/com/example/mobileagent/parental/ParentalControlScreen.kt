@@ -1,9 +1,7 @@
 package com.example.mobileagent.parental
 
-import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -23,8 +21,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.OpenInNew
@@ -33,6 +29,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,11 +47,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -64,21 +60,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/**
- * صفحه‌ی کنترلر والدین.
- *
- * کارها:
- *  - روشن/خاموش کردن کل سیستم
- *  - تنظیم پین
- *  - لیست اپ‌ها + آمار امروز + تنظیم محدودیت
- *  - لاگ اپ‌هایی که امروز باز شدن
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ParentalControlScreen(
     onBack: () -> Unit
 ) {
-    val ctx = LocalContext.current
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     val store = remember { ParentalStore(ctx) }
     val usageHelper = remember { UsageStatsHelper(ctx) }
@@ -93,7 +80,6 @@ fun ParentalControlScreen(
     var showPinDialog by remember { mutableStateOf(false) }
     var showLimitDialog by remember { mutableStateOf<AppUsageInfo?>(null) }
 
-    // لود کردن لیست اپ‌ها
     fun reload() {
         scope.launch {
             loading = true
@@ -134,7 +120,6 @@ fun ParentalControlScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
 
-            // ═══════════ بخش ۱: وضعیت کل
             item {
                 Card(
                     Modifier.fillMaxWidth(),
@@ -180,7 +165,6 @@ fun ParentalControlScreen(
                 }
             }
 
-            // ═══════════ بخش ۲: پرمیشن آمار استفاده
             if (!hasUsagePermission) {
                 item {
                     Card(
@@ -220,7 +204,6 @@ fun ParentalControlScreen(
                 }
             }
 
-            // ═══════════ بخش ۳: پین والدین
             item {
                 Card(
                     Modifier.fillMaxWidth(),
@@ -244,8 +227,7 @@ fun ParentalControlScreen(
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                if (hasPin) "تنظیم شده"
-                                else "تنظیم نشده",
+                                if (hasPin) "تنظیم شده" else "تنظیم نشده",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -257,7 +239,6 @@ fun ParentalControlScreen(
                 }
             }
 
-            // ═══════════ بخش ۴: حالت soft
             item {
                 Card(
                     Modifier.fillMaxWidth(),
@@ -290,7 +271,6 @@ fun ParentalControlScreen(
                 }
             }
 
-            // ═══════════ بخش ۵: عنوان لیست
             item {
                 Text(
                     "اپ‌ها",
@@ -305,14 +285,13 @@ fun ParentalControlScreen(
                 )
             }
 
-            // ═══════════ بخش ۶: لیست اپ‌ها
             if (loading) {
                 item {
                     Box(
                         Modifier.fillMaxWidth().padding(32.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        androidx.compose.material3.CircularProgressIndicator()
+                        CircularProgressIndicator()
                     }
                 }
             } else if (apps.isEmpty()) {
@@ -335,7 +314,6 @@ fun ParentalControlScreen(
         }
     }
 
-    // دیالوگ پین
     if (showPinDialog) {
         PinSetupDialog(
             onDismiss = { showPinDialog = false },
@@ -347,7 +325,6 @@ fun ParentalControlScreen(
         )
     }
 
-    // دیالوگ محدودیت
     showLimitDialog?.let { app ->
         LimitSetupDialog(
             app = app,
@@ -360,10 +337,6 @@ fun ParentalControlScreen(
         )
     }
 }
-
-// ═══════════════════════════════════════
-//  کارت اپ
-// ═══════════════════════════════════════
 
 @Composable
 private fun AppLimitCard(
@@ -441,10 +414,6 @@ private fun AppLimitCard(
     }
 }
 
-// ═══════════════════════════════════════
-//  دیالوگ پین
-// ═══════════════════════════════════════
-
 @Composable
 private fun PinSetupDialog(
     onDismiss: () -> Unit,
@@ -512,10 +481,6 @@ private fun PinSetupDialog(
     )
 }
 
-// ═══════════════════════════════════════
-//  دیالوگ محدودیت
-// ═══════════════════════════════════════
-
 @Composable
 private fun LimitSetupDialog(
     app: AppUsageInfo,
@@ -559,7 +524,7 @@ private fun LimitSetupDialog(
                 ) {
                     listOf(15, 30, 60, 120).forEach { preset ->
                         TextButton(onClick = { minutes = preset }) {
-                            Text("$preset دقیقه")
+                            Text("$preset")
                         }
                     }
                 }
@@ -578,9 +543,7 @@ private fun LimitSetupDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = {
-                onSave(0) // حذف محدودیت
-            }) {
+            TextButton(onClick = { onSave(0) }) {
                 Icon(Icons.Default.Delete, null, Modifier.size(18.dp))
                 Spacer(Modifier.width(4.dp))
                 Text("حذف")
