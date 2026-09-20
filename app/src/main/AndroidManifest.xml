@@ -27,7 +27,6 @@
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
 
-    <!-- کنترلر والدین -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
 
@@ -90,21 +89,15 @@
             </intent-filter>
         </receiver>
 
-        <!-- ═══════════ کنترلر والدین ═══════════ -->
-
-        <!-- صفحه‌ی مسدود — باید بالای همه‌ی اپ‌ها بیاد -->
         <activity
             android:name=".parental.LimitOverlayActivity"
             android:exported="false"
             android:launchMode="singleInstance"
             android:excludeFromRecents="true"
             android:noHistory="true"
-            android:excludeFromTaskRecents="true"
-            android:showOnLockScreen="false"
             android:taskAffinity=""
             android:theme="@style/Theme.MobileAgent" />
 
-        <!-- سرویس پایش محدودیت‌ها -->
         <service
             android:name=".parental.AppLimitService"
             android:exported="false"
