@@ -111,6 +111,8 @@ class AppLimitService : Service() {
         if (currentPkg == packageName) return  // خودمون
         if (currentPkg == "android") return      // صفحه‌ی home
         if (currentPkg.startsWith("com.android.systemui")) return
+                // اگه والدین اجازه‌ی موقت داده، بلاک نکن
+        if (AppLimitServiceGuard.isAllowed(currentPkg)) return
 
         val limit = store.limitFor(currentPkg)
         if (limit <= 0) return  // محدودیتی نداره
