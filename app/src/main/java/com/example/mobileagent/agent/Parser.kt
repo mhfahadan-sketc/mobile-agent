@@ -55,12 +55,6 @@ object Parser {
             else Command.FindJunk
         }
 
-        // ═══════ کش
-        if (Regex("(کش|cache).*(پاک|حذف|خالی|تمیز|بریز)").containsMatchIn(s) ||
-            Regex("(پاک|حذف|خالی|تمیز).*(کش|cache)").containsMatchIn(s)) {
-            return Command.CleanCache
-        }
-
         // ═══════ تحلیل حافظه
         if (Regex("(چقدر فضا|چی فضا|فضای خالی|حافظه|چقدر حجم|چی پره|گوشیم چطوره|آنالیز|تحلیل فضا)")
                 .containsMatchIn(s)) {
@@ -132,41 +126,59 @@ object Parser {
     }
 
     private fun parseAlarm(s: String): Command? {
-        if (!Regex("(آلارم|زنگ|یادآوری|هشدار|reminder|alarm)",
-                RegexOption.IGNORE_CASE).containsMatchIn(s)) return null
+        // کلمه‌ی آلارم؟
+        val hasAlarmWord = Regex("(آلارم|زنگ|یادآوری|هشدار|reminder|alarm)",
+                RegexOption.IGNORE_CASE).containsMatchIn(s)
+        if (!hasAlarmWord) return null
 
-        Regex("ساعت\\s*(\\d{1,2})(?::(\\d{1,2}))?").find(s)?.let {
+        // ⭐ فرمت ۱: «ساعت 7 و 30 دقیقه»
+        Regex("ساعت\\s*(\\d{1,2})\\s*(?:و|و\\s*)\\s*(\\d{1,2})\\s*دقیقه").find(s)?.let {
             val h = it.groupValues[1].toIntOrNull() ?: return null
-            val m = it.groupValues[2].toIntOrNull() ?: 0
-            if (h in 0..23 && m in 0..59) {
-                return Command.SetAlarm(h, m)
-            }
+            val m = it.groupValues[2].toIntOrNull() ?: return null
+            if (h in 0..23 && m in 0..59) return Command.SetAlarm(h, m)
         }
 
+        // ⭐ فرمت ۲: «ساعت X:Y» یا «X:Y»
         Regex("(\\d{1,2}):(\\d{1,2})").find(s)?.let {
             val h = it.groupValues[1].toIntOrNull() ?: return null
             val m = it.groupValues[2].toIntOrNull() ?: return null
-            if (h in 0..23 && m in 0..59) {
-                return Command.SetAlarm(h, m)
-            }
+            if (h in 0..23 && m in 0..59) return Command.SetAlarm(h, m)
         }
 
-        Regex("(\\d{1,2})\\s*(صبح|عصر|شب|ظهر|بعد از ظهر|بعدازظهر)").find(s)?.let {
+        // ⭐ فرمت ۳: «X و نیم» → X:30
+        Regex("ساعت\\s*(\\d{1,2})\\s*و\\s*نیم").find(s)?.let {
+            val h = it.groupValues[1].toIntOrNull() ?: return null
+            if (h in 0..23) return Command.SetAlarm(h, 30)
+        }
+
+        // ⭐ فرمت ۴: «X و ربع» → X:15
+        Regex("ساعت\\s*(\\d{1,2})\\s*و\\s*ربع").find(s)?.let {
+            val h = it.groupValues[1].toIntOrNull() ?: return null
+            if (h in 0..23) return Command.SetAlarm(h, 15)
+        }
+
+        // ⭐ فرمت ۵: «X صبح/عصر/شب/ظهر»
+        Regex("ساعت\\s*(\\d{1,2})\\s*(صبح|عصر|شب|ظهر|بعد از ظهر|بعدازظهر)").find(s)?.let {
             var h = it.groupValues[1].toIntOrNull() ?: return null
             val when_ = it.groupValues[2]
             if (h in 1..12) {
                 h = when {
                     when_ == "صبح" -> if (h == 12) 0 else h
-                    when_.contains("ظهر") && !when_.contains("بعد") ->
-                        if (h < 12) h + 12 else h
-                    when_ == "عصر" || when_.contains("بعد") ->
-                        if (h < 12) h + 12 else h
+                    when_.contains("ظهر") && !when_.contains("بعد") -> if (h < 12) h + 12 else h
+                    when_ == "عصر" || when_.contains("بعد") -> if (h < 12) h + 12 else h
                     when_ == "شب" -> if (h < 12) h + 12 else h
                     else -> h
                 }
                 return Command.SetAlarm(h.coerceIn(0, 23), 0)
             }
         }
+
+        // ⭐ فرمت ۶: «ساعت X» (بدون دقیقه)
+        Regex("ساعت\\s*(\\d{1,2})(?:\\s|$)").find(s)?.let {
+            val h = it.groupValues[1].toIntOrNull() ?: return null
+            if (h in 0..23) return Command.SetAlarm(h, 0)
+        }
+
         return null
     }
 
