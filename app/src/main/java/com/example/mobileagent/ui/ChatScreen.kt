@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
@@ -67,6 +68,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.mobileagent.R
 import com.example.mobileagent.core.ProgressChannel
 import com.example.mobileagent.core.ScanProgress
+import com.example.mobileagent.parental.ParentalControlScreen
 import com.example.mobileagent.voice.VoiceSettingsScreen
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -88,6 +90,9 @@ fun ChatScreen(
     val showVoiceSettings by vm.showVoiceSettings.collectAsStateWithLifecycle()
     val voiceStatus by vm.voiceStatus.collectAsStateWithLifecycle()
 
+    // کنترلر والدین — لوکال state
+    var showParentalControl by remember { mutableStateOf(false) }
+
     // صفحه‌ی تهدیدها
     if (showThreats) {
         ThreatDetailScreen(
@@ -101,6 +106,14 @@ fun ChatScreen(
     if (showVoiceSettings) {
         VoiceSettingsScreen(
             onBack = { vm.closeVoiceSettings() }
+        )
+        return
+    }
+
+    // صفحه‌ی کنترلر والدین
+    if (showParentalControl) {
+        ParentalControlScreen(
+            onBack = { showParentalControl = false }
         )
         return
     }
@@ -175,6 +188,15 @@ fun ChatScreen(
                     }
                 },
                 actions = {
+                    // 🛡️ کنترلر والدین
+                    IconButton(onClick = { showParentalControl = true }) {
+                        Icon(
+                            Icons.Default.Lock,
+                            contentDescription = "کنترلر والدین",
+                            tint = cs.primary
+                        )
+                    }
+                    // ⚙️ تنظیمات صدا
                     IconButton(onClick = { vm.openVoiceSettings() }) {
                         Icon(
                             Icons.Default.Settings,
@@ -232,7 +254,6 @@ fun ChatScreen(
                     }
                 }
 
-                // نشونگر "دارم فکر می‌کنم"
                 if (busy) {
                     item {
                         Row(
@@ -271,16 +292,13 @@ fun ChatScreen(
                 }
             }
 
-            // نوار پیشرفت اسکن
             ScanProgressBar()
 
-            // دکمه‌های سریع
             QuickActionsRow(
                 enabled = !busy,
                 onCommand = { vm.send(it) }
             )
 
-            // نوار ورودی
             InputBar(
                 value = input,
                 onValueChange = { input = it },
