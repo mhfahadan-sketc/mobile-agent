@@ -195,7 +195,6 @@ class LlmAgent {
                 "delete_duplicates" -> Result.Cmd(Command.DeleteDuplicates)
                 "find_junk" -> Result.Cmd(Command.FindJunk)
                 "delete_junk" -> Result.Cmd(Command.DeleteJunk)
-                "clean_cache" -> Result.Cmd(Command.CleanCache)
                 "analyze_storage" -> Result.Cmd(Command.AnalyzeStorage)
                 "help" -> Result.Cmd(Command.Help)
                 "chat" -> {
