@@ -6,8 +6,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import android.provider.AlarmClock
-import android.provider.Settings
 import android.telephony.SmsManager
 import androidx.core.content.ContextCompat
 import com.example.mobileagent.agent.Command
@@ -48,7 +46,6 @@ class ActionExecutor(private val context: Context) {
         Command.DeleteDuplicates -> deleteDuplicates()
         Command.FindJunk -> findJunk()
         Command.DeleteJunk -> deleteJunk()
-        Command.CleanCache -> cleanCache()
         Command.AnalyzeStorage -> analyzeStorage()
 
         Command.Help -> HELP
@@ -56,39 +53,31 @@ class ActionExecutor(private val context: Context) {
         is Command.Unknown -> "متوجه نشدم 🤔\n«راهنما» رو بزن."
     }
 
-    // ═════════════════ تماس / پیام
-
     private fun call(contact: String): String {
         val num = contacts.resolve(contact) ?: return "«$contact» توی مخاطبین نبود."
         if (!has(Manifest.permission.CALL_PHONE))
-            return "اجازه‌ی تماس نداری. از تنظیمات بده."
+            return "اجازه‌ی تماس نداری."
         return try {
             context.startActivity(
                 Intent(Intent.ACTION_CALL, Uri.parse("tel:${Uri.encode(num)}"))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
             "📞 تماس با «$contact»"
-        } catch (e: Exception) {
-            "تماس نشد: ${e.message}"
-        }
+        } catch (e: Exception) { "تماس نشد: ${e.message}" }
     }
 
     private fun sms(contact: String, body: String): String {
         val num = contacts.resolve(contact) ?: return "«$contact» پیدا نشد."
-        if (!has(Manifest.permission.SEND_SMS))
-            return "اجازه‌ی پیامک نداری."
+        if (!has(Manifest.permission.SEND_SMS)) return "اجازه‌ی پیامک نداری."
         return try {
             val sm = if (Build.VERSION.SDK_INT >= 31)
                 context.getSystemService(SmsManager::class.java)!!
-            else
-                @Suppress("DEPRECATION") SmsManager.getDefault()
+            else @Suppress("DEPRECATION") SmsManager.getDefault()
             val parts = sm.divideMessage(body)
             if (parts.size == 1) sm.sendTextMessage(num, null, body, null, null)
             else sm.sendMultipartTextMessage(num, null, parts, null, null)
             "✉️ پیامک به «$contact» فرستاده شد."
-        } catch (e: Exception) {
-            "پیامک نشد: ${e.message}"
-        }
+        } catch (e: Exception) { "پیامک نشد: ${e.message}" }
     }
 
     private fun whatsapp(contact: String, body: String?): String {
@@ -105,12 +94,8 @@ class ActionExecutor(private val context: Context) {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
             "📨 واتساپ برای «$contact» باز شد."
-        } catch (e: Exception) {
-            "واتساپ نصب نیست."
-        }
+        } catch (e: Exception) { "واتساپ نصب نیست." }
     }
-
-    // ═════════════════ باز کردن اپ
 
     private val appAliases = mapOf(
         "اینستاگرام" to "com.instagram.android",
@@ -129,7 +114,6 @@ class ActionExecutor(private val context: Context) {
         val direct = appAliases[q] ?: appAliases.entries.firstOrNull {
             q.contains(it.key) || it.key.contains(q)
         }?.value
-
         if (direct != null) {
             pm.getLaunchIntentForPackage(direct)?.let {
                 it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -140,9 +124,7 @@ class ActionExecutor(private val context: Context) {
 
         val apps = if (Build.VERSION.SDK_INT >= 33)
             pm.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(0))
-        else
-            @Suppress("DEPRECATION") pm.getInstalledApplications(0)
-
+        else @Suppress("DEPRECATION") pm.getInstalledApplications(0)
         for (a in apps) {
             val lbl = Parser.normalize(pm.getApplicationLabel(a).toString())
             if (lbl.contains(q, true) || q.contains(lbl, true)) {
@@ -155,8 +137,6 @@ class ActionExecutor(private val context: Context) {
         }
         return "اپی با نام «$name» نبود."
     }
-
-    // ═════════════════ جستجو
 
     private fun webSearch(q: String): String {
         return try {
@@ -174,9 +154,7 @@ class ActionExecutor(private val context: Context) {
                     ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 )
                 "🔎 دارم «$q» رو جستجو می‌کنم."
-            } catch (_: Exception) {
-                "مرورگر نبود."
-            }
+            } catch (_: Exception) { "مرورگر نبود." }
         }
     }
 
@@ -188,72 +166,55 @@ class ActionExecutor(private val context: Context) {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
             "باز شد: $full"
-        } catch (_: Exception) {
-            "باز نشد."
-        }
+        } catch (_: Exception) { "باز نشد." }
     }
-
-    // ═════════════════ آلارم
 
     private fun setAlarm(h: Int, m: Int): String {
         val timeStr = "${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}"
-
-        try {
-            val intent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
-                putExtra(AlarmClock.EXTRA_HOUR, h)
-                putExtra(AlarmClock.EXTRA_MINUTES, m)
-                putExtra(AlarmClock.EXTRA_SKIP_UI, false)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            context.startActivity(intent)
-            return "⏰ آلارم $timeStr تنظیم شد."
-        } catch (_: Exception) { }
-
-        try {
-            val intent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
-                putExtra(AlarmClock.EXTRA_HOUR, h)
-                putExtra(AlarmClock.EXTRA_MINUTES, m)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            context.startActivity(intent)
-            return "⏰ آلارم $timeStr تنظیم شد."
-        } catch (_: Exception) { }
-
-        try {
-            context.startActivity(
-                Intent(AlarmClock.ACTION_SHOW_ALARMS)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            )
-            return "⏰ اپ ساعت باز شد. ساعت $timeStr رو دستی تنظیم کن."
-        } catch (_: Exception) { }
-
         return try {
-            context.startActivity(
-                Intent(Settings.ACTION_DATE_SETTINGS)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val now = java.util.Calendar.getInstance()
+            val target = java.util.Calendar.getInstance().apply {
+                set(java.util.Calendar.HOUR_OF_DAY, h)
+                set(java.util.Calendar.MINUTE, m)
+                set(java.util.Calendar.SECOND, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+            }
+            if (target.timeInMillis <= now.timeInMillis) {
+                target.add(java.util.Calendar.DAY_OF_YEAR, 1)
+            }
+
+            val am = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+
+            val intent = Intent(context, com.example.mobileagent.alarm.AlarmReceiver::class.java).apply {
+                putExtra("hour", h)
+                putExtra("minute", m)
+            }
+            val pi = android.app.PendingIntent.getBroadcast(
+                context,
+                1000 + h * 60 + m,
+                intent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
             )
-            "⏰ اپ ساعت پیدا نشد. ساعت $timeStr رو دستی تنظیم کن."
-        } catch (_: Exception) {
-            "نتونستم آلارم بذارم."
+
+            val info = android.app.AlarmManager.AlarmClockInfo(target.timeInMillis, pi)
+            am.setAlarmClock(info, pi)
+
+            "⏰ آلارم برای $timeStr تنظیم شد."
+        } catch (e: Exception) {
+            "آلارم نشد: ${e.message}"
         }
     }
-
-    // ═════════════════ امنیت
 
     private suspend fun scanMalware(): String {
         lastThreats = malware.scan()
         if (lastThreats.isEmpty()) return "✅ اسکن تموم شد. تهدیدی نبود."
         return buildString {
             append("⚠️ ${lastThreats.size} مورد پیدا شد:\n\n")
-            lastThreats.take(5).forEach {
-                append("• ${it.label} — ${it.severity.label}\n")
-            }
+            lastThreats.take(5).forEach { append("• ${it.label} — ${it.severity.label}\n") }
             if (lastThreats.size > 5) append("… و ${lastThreats.size - 5} مورد دیگه.\n")
             append("\nصفحه‌ی جزئیات باز شد.")
         }
     }
-
-    // ═════════════════ پاکسازی
 
     private suspend fun findDuplicates(): String {
         lastDuplicates = dupFinder.find()
@@ -282,9 +243,7 @@ class ActionExecutor(private val context: Context) {
         val total = lastJunk.sumOf { it.size }
         return buildString {
             append("🧹 ${lastJunk.size} فایل اضافی (${fmtB(total)})\n\n")
-            lastJunk.take(5).forEach {
-                append("• ${it.file.name} — ${it.reason}\n")
-            }
+            lastJunk.take(5).forEach { append("• ${it.file.name} — ${it.reason}\n") }
             append("\nبرای حذف بگو: «اضافی‌ها رو پاک کن»")
         }
     }
@@ -294,12 +253,6 @@ class ActionExecutor(private val context: Context) {
         val (n, freed) = junk.deleteJunk(lastJunk)
         lastJunk = emptyList()
         return "✅ $n فایل پاک شد.\n💾 ${fmtB(freed)} آزاد شد."
-    }
-
-    private suspend fun cleanCache(): String {
-        val freed = junk.clearOwnCache()
-        return "✅ کش خودم پاک شد (${fmtB(freed)}).\n\n" +
-                "⚠️ برای کش بقیه اپ‌ها root لازمه."
     }
 
     private suspend fun analyzeStorage(): String {
@@ -316,8 +269,6 @@ class ActionExecutor(private val context: Context) {
                 }
         }
     }
-
-    // ═════════════════ ابزار
 
     private fun has(p: String) =
         ContextCompat.checkSelfPermission(context, p) == PackageManager.PERMISSION_GRANTED
@@ -343,7 +294,6 @@ class ActionExecutor(private val context: Context) {
             🛡️ ویروس‌ها رو پیدا کن
             📑 فایل‌های تکراری رو پیدا کن
             🧹 فایل‌های اضافی رو پیدا کن
-            💾 کش رو پاک کن
             📊 چقدر فضا اشغال شده
         """.trimIndent()
     }
