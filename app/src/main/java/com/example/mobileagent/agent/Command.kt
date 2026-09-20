@@ -9,13 +9,11 @@ sealed interface Command {
     data class OpenUrl(val url: String) : Command
     data class SetAlarm(val hour: Int, val minute: Int) : Command
 
-    // امنیت و پاکسازی
     data object ScanMalware : Command
     data object FindDuplicates : Command
     data object DeleteDuplicates : Command
     data object FindJunk : Command
     data object DeleteJunk : Command
-    data object CleanCache : Command
     data object AnalyzeStorage : Command
 
     data object Help : Command
