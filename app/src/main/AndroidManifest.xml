@@ -23,6 +23,9 @@
 
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
@@ -85,5 +88,9 @@
                 <action android:name="com.example.mobileagent.CALL_SMS" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name=".alarm.AlarmReceiver"
+            android:exported="false" />
     </application>
 </manifest>
