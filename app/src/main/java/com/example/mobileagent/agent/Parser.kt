@@ -126,38 +126,37 @@ object Parser {
     }
 
     private fun parseAlarm(s: String): Command? {
-        // کلمه‌ی آلارم؟
         val hasAlarmWord = Regex("(آلارم|زنگ|یادآوری|هشدار|reminder|alarm)",
                 RegexOption.IGNORE_CASE).containsMatchIn(s)
         if (!hasAlarmWord) return null
 
-        // ⭐ فرمت ۱: «ساعت 7 و 30 دقیقه»
-        Regex("ساعت\\s*(\\d{1,2})\\s*(?:و|و\\s*)\\s*(\\d{1,2})\\s*دقیقه").find(s)?.let {
+        // ⭐ «ساعت 7 و 30 دقیقه»
+        Regex("ساعت\\s*(\\d{1,2})\\s*و\\s*(\\d{1,2})\\s*دقیقه").find(s)?.let {
             val h = it.groupValues[1].toIntOrNull() ?: return null
             val m = it.groupValues[2].toIntOrNull() ?: return null
             if (h in 0..23 && m in 0..59) return Command.SetAlarm(h, m)
         }
 
-        // ⭐ فرمت ۲: «ساعت X:Y» یا «X:Y»
+        // ⭐ «X:Y» یا «ساعت X:Y»
         Regex("(\\d{1,2}):(\\d{1,2})").find(s)?.let {
             val h = it.groupValues[1].toIntOrNull() ?: return null
             val m = it.groupValues[2].toIntOrNull() ?: return null
             if (h in 0..23 && m in 0..59) return Command.SetAlarm(h, m)
         }
 
-        // ⭐ فرمت ۳: «X و نیم» → X:30
+        // ⭐ «X و نیم»
         Regex("ساعت\\s*(\\d{1,2})\\s*و\\s*نیم").find(s)?.let {
             val h = it.groupValues[1].toIntOrNull() ?: return null
             if (h in 0..23) return Command.SetAlarm(h, 30)
         }
 
-        // ⭐ فرمت ۴: «X و ربع» → X:15
+        // ⭐ «X و ربع»
         Regex("ساعت\\s*(\\d{1,2})\\s*و\\s*ربع").find(s)?.let {
             val h = it.groupValues[1].toIntOrNull() ?: return null
             if (h in 0..23) return Command.SetAlarm(h, 15)
         }
 
-        // ⭐ فرمت ۵: «X صبح/عصر/شب/ظهر»
+        // ⭐ «X صبح/عصر/شب/ظهر»
         Regex("ساعت\\s*(\\d{1,2})\\s*(صبح|عصر|شب|ظهر|بعد از ظهر|بعدازظهر)").find(s)?.let {
             var h = it.groupValues[1].toIntOrNull() ?: return null
             val when_ = it.groupValues[2]
@@ -173,7 +172,7 @@ object Parser {
             }
         }
 
-        // ⭐ فرمت ۶: «ساعت X» (بدون دقیقه)
+        // ⭐ «ساعت X» ساده
         Regex("ساعت\\s*(\\d{1,2})(?:\\s|$)").find(s)?.let {
             val h = it.groupValues[1].toIntOrNull() ?: return null
             if (h in 0..23) return Command.SetAlarm(h, 0)
